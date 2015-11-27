@@ -1,0 +1,6 @@
+-------------------------
+ Fagelmatare AVR - TODO
+-------------------------
+
+- Code needs refactoring
+- Fix bug which will make the servo randomly "shake" (possibly because ISR callback affects micros() function)

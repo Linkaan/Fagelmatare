@@ -1,0 +1,5 @@
+-------------------------
+ Fagelmatare Core - TODO
+-------------------------
+
+- Code needs refactoring
