@@ -24,7 +24,7 @@ Fågelmataren is mainly controlled on a Raspberry Pi and an ATMega328-PU, howeve
 - **Send Serial** is a small utility program to interact with Serial Handler to send and receive arbitrary messages.
 
 ### Workflow
-![flowchart](http://i.imgur.com/AM1Va8y.png)
+![flowchart](http://i.imgur.com/QGEeTjX.png)
 
 ### Thanks to
 - Audio/Video recorder for Raspberry Pi: [picam](https://github.com/iizukanao/picam)
