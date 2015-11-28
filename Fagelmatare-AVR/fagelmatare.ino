@@ -1,3 +1,28 @@
+/*
+ *  fagelmatare.ino
+ *    Program running on an ATMega328-PU to handle requests and send events
+ *    Copyright (C) 2015 Linus Styrén
+ *****************************************************************************
+ *  This file is part of Fågelmataren:
+ *    https://github.com/Linkaan/Fagelmatare/
+ *
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Lesser General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2.1 of the License, or (at your option) any later version.
+ *
+ *  This library is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Lesser General Public License for more details.
+ *
+ *  You should have received a copy of the GNU Lesser General Public
+ *  License along with this library; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301
+ *  USA
+ *****************************************************************************
+ */
+
 #include <Servo.h>
 #include <NewPing.h>
 
@@ -209,23 +234,23 @@ void motion_check() { // Timer2 interrupt calls this function every 24uS where y
   uint8_t rc = sonar.check_timer();
   if(rc==0) { // This is how you check to see if the ping was received.
     float echo_time = (float) sonar.ping_result;
-    
+
     if(avg_time == MAX_TIME) {
       avg_time = echo_time;
-      avg_dt = 0.0f;  
+      avg_dt = 0.0f;
     }else {
       float prev_avg_time = avg_time;
       avg_time = avg_time * g + (1.0f - g) * echo_time;
-      avg_dt = avg_dt * g + (1.0f - g) * (avg_time - prev_avg_time); 
-      
+      avg_dt = avg_dt * g + (1.0f - g) * (avg_time - prev_avg_time);
+
       if(millis() > cooldown && (avg_dt < -dt_hysteresis || avg_dt > +dt_hysteresis)) {
-        cooldown = millis() + COOLDOWN; 
+        cooldown = millis() + COOLDOWN;
         Serial.print("/E/");
         Serial.print("motion");
-        Serial.print('\0'); 
-      } 
+        Serial.print('\0');
+      }
     }
-     
+
     iterations = 5;
   }else if(rc > 1 && --iterations == 0) {
     avg_time = MAX_TIME;

@@ -30,7 +30,7 @@ Fågelmataren is mainly controlled on a Raspberry Pi and an ATMega328-PU, howeve
 - Audio/Video recorder for Raspberry Pi: [picam](https://github.com/iizukanao/picam)
 - Multimedia framework library: [ffmpeg](https://github.com/FFmpeg/FFmpeg)
 - Lock-free Stack codebase: [lstack](https://github.com/skeeto/lstack)
-- Arduino wiring function library: [wiringPi](https://github.com/WiringPi/WiringPi)
+- Raspberry Pi GPIO access library: [wiringPi](https://projects.drogon.net/raspberry-pi/wiringpi/)
 
 ### License
 The codebase for Fågelmataren is LPGL-licensed. Please refer to the LICENSE file for detailed information.
