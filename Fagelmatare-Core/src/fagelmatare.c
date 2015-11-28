@@ -103,7 +103,6 @@ int fdutimensat     (int fd, int dir, char const *file, struct timespec const ts
 int on_file_create  (char *filename, char *content);
 
 char* current_time  (void);
-char* make_message  (const char *fmt, ...);
 void die		        (int sig);
 void alarm_handler  (int sig);
 
@@ -390,8 +389,14 @@ void *ping_func(void *param) {
     return NULL;
   }
 
-  msg = make_message("/S/motion|start_record|stop_record");
-  len = strlen(msg);
+  len = asprintf(&msg, "/S/motion|start_record|stop_record");
+  if(len < 0) {
+    log_error("asprintf error: %s\n", strerror(errno));
+    close(sockfd);
+    free(msg);
+    is_ultrasonic_enabled = 0;
+    return NULL;
+  }
   if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
     if(rc > 0) log_error("partial write (%d of %d)\n", rc, len);
     else {
@@ -428,26 +433,6 @@ void *ping_func(void *param) {
         memmove(buf, buf+3, len - 3 + 1);
         for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
           if(!strncasecmp("motion", buf, strlen(buf))) {
-            //atomic_store(&mping, (_Bool) 1);
-            /**if(atomic_compare_exchange_weak(&mpir, (_Bool[]) { true }, false)) {
-              reset_timer();
-              if(atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
-                if(touch(START_RECORD_HOOK)) {
-                  log_fatal("could not create start recording hook (%s)\n", strerror(errno));
-                  atomic_store(&rec, false);
-                }else {
-                  char *datetime = current_time();
-                  _log_debug("started recording pursuant to ping sensor at %s\n", datetime);
-                  free(datetime);
-
-                  pthread_mutex_lock(&userdata_mutex);
-                  clock_gettime(CLOCK_REALTIME, userdata->start);
-                  pthread_mutex_unlock(&userdata_mutex);
-                }
-              }
-            }
-            alarm(5);
-            */
             log_args *largs = malloc(sizeof(log_args));
             if(largs == NULL) {
               log_fatal("in ping_func: memory allocation failed: (%s)\n", strerror(errno));
@@ -476,12 +461,19 @@ void *ping_func(void *param) {
             pthread_mutex_unlock(&userdata_mutex);
           }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
-            msg = make_message("/R/subscribed");
-            len = strlen(msg);
+            len = asprintf(&msg, "/R/subscribed");
+            if(len < 0) {
+              log_error("asprintf error: %s\n", strerror(errno));
+              close(sockfd);
+              free(msg);
+              is_ultrasonic_enabled = 0;
+              break;
+            }
             if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
               if(rc > 0) log_error("partial write (%d of %d)\n", rc, len);
               else {
                 log_error("failed to subscribe to event (write error: %s)\n", strerror(errno));
+                close(sockfd);
                 free(msg);
                 is_ultrasonic_enabled = 0;
                 break;
@@ -734,37 +726,6 @@ int fdutimensat(int fd, int dir, char const *file, struct timespec const ts[2], 
     result = -1;
   }
   return result;
-}
-
-char* make_message(const char *fmt, ...) {
-  int n;
-  int size = 16;
-  char *p, *np;
-  va_list ap;
-
-  if((p = malloc(size)) == NULL)
-    return NULL;
-
-  while(1) {
-    va_start(ap, fmt);
-    n = vsnprintf(p, size, fmt, ap);
-    va_end(ap);
-
-    if(n < 0)
-      return NULL;
-
-    if(n < size)
-      return p;
-
-    size = n + 1;
-
-    if((np = realloc(p, size)) == NULL) {
-      free(p);
-      return NULL;
-    }else {
-      p = np;
-    }
-  }
 }
 
 void die(int sig) {

@@ -47,7 +47,6 @@ struct config {
 
 int get_config(char *filename, struct config *configuration);
 void free_config(struct config *configuration);
-char* make_message(const char *fmt, ...);
 
 int main(void) {
   MYSQL *mysql;
@@ -101,9 +100,9 @@ int main(void) {
       break;
     }
 
-    msg = make_message("1;temperature");
+    asprintf(&msg, "1;temperature");
     len = strlen(msg);
-    if((rc = send(fd, msg, len, MSG_NOSIGNAL)) != len) {
+    if((rc = send(fd, "1;temperature", len, MSG_NOSIGNAL)) != len) {
       if(rc > 0) fprintf(stderr, "partial write");
       else {
         if(rc < 0) {
@@ -262,35 +261,4 @@ void free_config(struct config *configuration) {
   configuration->serv_addr = NULL;
   configuration->username = NULL;
   configuration->passwd = NULL;
-}
-
-char* make_message(const char *fmt, ...) {
-  int n;
-  int size = 16;
-  char *p, *np;
-  va_list ap;
-
-  if((p = malloc(size)) == NULL)
-    return NULL;
-
-  while(1) {
-    va_start(ap, fmt);
-    n = vsnprintf(p, size, fmt, ap);
-    va_end(ap);
-
-    if(n < 0)
-      return NULL;
-
-    if(n < size)
-      return p;
-
-    size = n + 1;
-
-    if((np = realloc(p, size)) == NULL) {
-      free(p);
-      return NULL;
-    }else {
-      p = np;
-    }
-  }
 }

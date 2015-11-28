@@ -1,5 +1,5 @@
 /*
- *  config.c
+ *  config.h
  *    Parse configuration file used by this program.
  *    Copyright (C) 2015 Linus Styrén
  *****************************************************************************
