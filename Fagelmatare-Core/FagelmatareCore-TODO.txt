@@ -3,3 +3,4 @@
 -------------------------
 
 - Code needs refactoring
+- Improve logging system

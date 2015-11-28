@@ -66,12 +66,10 @@ typedef struct {
 } log_args;
 
 struct user_data {
-  int *pipefd;
   lstack_t *results;
-  struct config *configs;
   pthread_mutex_t *mxq;
-  struct timespec *start;
-  struct timespec *end;
+  int *pipefd;
+  struct config *configs;
 };
 static pthread_mutex_t userdata_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -109,16 +107,13 @@ int main(void) {
   lstack_t results; /* lstack_t struct used by lstack */
   pthread_mutex_t mxq; /* mutex used as quit flag */
   struct config configs;
-  struct timespec start, end;
 
   /* init user_data struct used by threads for synchronization */
   struct user_data userdata = {
-    .pipefd  = &pipefd[0], // TODO make atomic
-    .results = &results,
     .configs = &configs,
     .mxq     = &mxq,
-    .start   = &start,
-    .end     = &end
+    .pipefd  = &pipefd[0],
+    .results = &results,
   };
 
   /* initialize wiringpi */
@@ -234,13 +229,6 @@ int main(void) {
     if(touch(configs.stop_hook)) {
       log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
       atomic_store(&rec, true);
-    }else {
-      clock_gettime(CLOCK_REALTIME, &end);
-      double elapsed = (end.tv_sec-start.tv_sec)*1E9 + end.tv_nsec-start.tv_nsec;
-
-      char *datetime = current_time();
-      _log_debug("recorded video of length %lf seconds at %s\n", elapsed/1E9, datetime);
-      free(datetime);
     }
   }
 
@@ -289,15 +277,6 @@ void *timer_func(void *param) {
         if(touch(userdata->configs->stop_hook)) {
           log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
           atomic_store(&rec, true);
-        }else {
-          pthread_mutex_lock(&userdata_mutex);
-          clock_gettime(CLOCK_REALTIME, userdata->end);
-          double elapsed = ((*userdata->end).tv_sec-(*userdata->start).tv_sec)*1E9 + (*userdata->end).tv_nsec-(*userdata->start).tv_nsec;
-          pthread_mutex_unlock(&userdata_mutex);
-
-          char *datetime = current_time();
-          _log_debug("recorded video of length %lf seconds at %s\n", elapsed/1E9, datetime);
-          free(datetime);
         }
       }
     }
@@ -311,15 +290,6 @@ void *timer_func(void *param) {
     if(touch(userdata->configs->stop_hook)) {
       log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
       atomic_store(&rec, true);
-    }else {
-      pthread_mutex_lock(&userdata_mutex);
-      clock_gettime(CLOCK_REALTIME, userdata->end);
-      double elapsed = ((*userdata->end).tv_sec-(*userdata->start).tv_sec)*1E9 + (*userdata->end).tv_nsec-(*userdata->start).tv_nsec;
-      pthread_mutex_unlock(&userdata_mutex);
-
-      char *datetime = current_time();
-      _log_debug("recorded video of length %lf seconds at %s\n", elapsed/1E9, datetime);
-      free(datetime);
     }
   }
   return NULL;
@@ -481,14 +451,6 @@ void *ping_func(void *param) {
               if(touch(userdata->configs->start_hook)) {
                 log_fatal("could not create start recording hook (%s)\n", strerror(errno));
                 atomic_store(&rec, false);
-              }else {
-                char *datetime = current_time();
-                _log_debug("started recording at %s\n", datetime);
-                free(datetime);
-
-                pthread_mutex_lock(&userdata_mutex);
-                clock_gettime(CLOCK_REALTIME, userdata->start);
-                pthread_mutex_unlock(&userdata_mutex);
               }
             }
           }else if(!strncasecmp("stop_record", buf, strlen(buf))) {
@@ -497,15 +459,6 @@ void *ping_func(void *param) {
               if(touch(userdata->configs->stop_hook)) {
                 log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
                 atomic_store(&rec, true);
-              }else {
-                pthread_mutex_lock(&userdata_mutex);
-                clock_gettime(CLOCK_REALTIME, userdata->end);
-                double elapsed = ((*userdata->end).tv_sec-(*userdata->start).tv_sec)*1E9 + (*userdata->end).tv_nsec-(*userdata->start).tv_nsec;
-                pthread_mutex_unlock(&userdata_mutex);
-
-                char *datetime = current_time();
-                _log_debug("recorded video of length %lf seconds at %s\n", elapsed/1E9, datetime);
-                free(datetime);
               }
             }
           }else {
@@ -581,14 +534,6 @@ void interrupt_callback(void *param) {
         if(touch(userdata->configs->start_hook)) {
           log_fatal("could not create start recording hook (%s)\n", strerror(errno));
           atomic_store(&rec, false);
-        }else {
-          char *datetime = current_time();
-          _log_debug("started recording pursuant to pir sensor at %s\n", datetime);
-          free(datetime);
-
-          pthread_mutex_lock(&userdata_mutex);
-          clock_gettime(CLOCK_REALTIME, userdata->start);
-          pthread_mutex_unlock(&userdata_mutex);
         }
       }
     /**}*/
@@ -648,14 +593,27 @@ void interrupt_callback(void *param) {
     }
     pthread_mutex_unlock(&userdata_mutex);
   }
-  //usleep(100000); // strange bug workaround
 }
 
 int on_file_create(char *filename, char *content) {
+  static struct timespec start, end;
+
   if(strcmp(filename, "record") == 0) {
     _log_debug("recording state changed to: %s\n", content);
     if(strcmp(content, "false") == 0) {
       atomic_store(&rec, false);
+      clock_gettime(CLOCK_REALTIME, &end);
+      double elapsed = (end.tv_sec-start.tv_sec)*1E9 + end.tv_nsec-start.tv_nsec;
+
+      char *datetime = current_time();
+      _log_debug("recorded video of length %lf seconds at %s\n", elapsed/1E9, datetime);
+      free(datetime);
+    }else {
+      char *datetime = current_time();
+      _log_debug("started recording at %s\n", datetime);
+      free(datetime);
+
+      clock_gettime(CLOCK_REALTIME, &start);
     }
     return 1;
   }else {
@@ -696,7 +654,7 @@ int touch(const char *file) {
     clock_gettime(CLOCK_REALTIME, &new_times[1]);
   }
 
-  if(fdutimensat(fd, AT_FDCWD, file, new_times, 0/**AT_SYMLINK_NOFOLLOW*/)) {
+  if(fdutimensat(fd, AT_FDCWD, file, new_times, 0)) {
     if(open_errno) {
       errno = open_errno;
     }
