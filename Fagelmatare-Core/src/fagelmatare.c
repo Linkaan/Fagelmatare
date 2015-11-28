@@ -132,7 +132,7 @@ int main(void) {
   }
 
   /* attempt to connect to database to instantiate dblogger for use */
-  if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) { // "pi", "jF9bHN7ACY7CwD3Q"
+  if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) {
     log_warn("could not connect to database (%d)\n", err);
   }
 

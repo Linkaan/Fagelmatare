@@ -204,7 +204,6 @@ int main(void) {
   }
   close(fd);
   mysql_close(mysql);
-  free_config(&configs);
 
   subtitles = fopen(configs.subtitle_hook, "w");
   if(subtitles == NULL) {
@@ -221,6 +220,8 @@ int main(void) {
       "duration=0" , out_temperature / 10.0f, cpu_temperature / 10.0f);
     fclose(subtitles);
   }
+  free_config(&configs);
+
   return 0;
 }
 
