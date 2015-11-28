@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <config.h>
 
 int get_config(char *filename, struct config *configuration) {
@@ -49,6 +50,21 @@ int get_config(char *filename, struct config *configuration) {
           configuration->username = strdup(pch);
         }else if(!strcmp(pch, "passwd") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->passwd = strdup(pch);
+        }else if(!strcmp(pch, "socket_path") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->sock_path = strdup(pch);
+        }else if(!strcmp(pch, "state_path") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->state_path = strdup(pch);
+        }else if(!strcmp(pch, "start_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->start_hook = strdup(pch);
+        }else if(!strcmp(pch, "stop_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->stop_hook = strdup(pch);
+        }else if(!strcmp(pch, "pir_gpio_input") && (pch = strtok(NULL, DELIM)) != NULL) {
+          char *end;
+
+          configuration->pir_input = (int) strtol(pch, &end, 10);
+          if (*end || errno == ERANGE) {
+            return 1;
+          }
         }
       }
     }
@@ -62,7 +78,15 @@ void free_config(struct config *configuration) {
   free(configuration->serv_addr);
   free(configuration->username);
   free(configuration->passwd);
+  free(configuration->sock_path);
+  free(configuration->state_path);
+  free(configuration->start_hook);
+  free(configuration->stop_hook);
   configuration->serv_addr = NULL;
   configuration->username = NULL;
   configuration->passwd = NULL;
+  configuration->sock_path = NULL;
+  configuration->state_path = NULL;
+  configuration->start_hook = NULL;
+  configuration->stop_hook = NULL;
 }

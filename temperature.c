@@ -35,14 +35,14 @@
 #include <my_global.h>
 #include <mysql.h>
 
-#define SUBTITLE_HOOK "/usr/src/picam/hooks/subtitle"
 #define CONFIG_PATH "/etc/fagelmatare.conf"
-#define SOCKET_PATH "/tmp/shandler.sock"
 
 struct config {
  char *serv_addr;
  char *username;
  char *passwd;
+ char *sock_path;
+ char *subtitle_hook;
 };
 
 int get_config(char *filename, struct config *configuration);
@@ -84,7 +84,7 @@ int main(void) {
 
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path)-1);
+  strncpy(addr.sun_path, configs.sock_path, sizeof(addr.sun_path)-1);
 
   for(i = 0; i < 2; ++i) {
     if((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
@@ -206,7 +206,7 @@ int main(void) {
   mysql_close(mysql);
   free_config(&configs);
 
-  subtitles = fopen(SUBTITLE_HOOK, "w");
+  subtitles = fopen(configs.subtitle_hook, "w");
   if(subtitles == NULL) {
     perror("failed to open subtitles hook for writing");
   }else {
@@ -245,6 +245,10 @@ int get_config(char *filename, struct config *configuration) {
           configuration->username = strdup(pch);
         }else if(!strcmp(pch, "passwd") && (pch = strtok(NULL, " \n")) != NULL) {
           configuration->passwd = strdup(pch);
+        }else if(!strcmp(pch, "socket_path") && (pch = strtok(NULL, " \n")) != NULL) {
+          configuration->sock_path = strdup(pch);
+        }else if(!strcmp(pch, "subtitle_hook") && (pch = strtok(NULL, " \n")) != NULL) {
+          configuration->subtitle_hook = strdup(pch);
         }
       }
     }
@@ -258,7 +262,11 @@ void free_config(struct config *configuration) {
   free(configuration->serv_addr);
   free(configuration->username);
   free(configuration->passwd);
+  free(configuration->sock_path);
+  free(configuration->subtitle_hook);
   configuration->serv_addr = NULL;
   configuration->username = NULL;
   configuration->passwd = NULL;
+  configuration->sock_path = NULL;
+  configuration->subtitle_hook = NULL;
 }

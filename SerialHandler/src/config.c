@@ -49,6 +49,8 @@ int get_config(char *filename, struct config *configuration) {
           configuration->username = strdup(pch);
         }else if(!strcmp(pch, "passwd") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->passwd = strdup(pch);
+        }else if(!strcmp(pch, "socket_path") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->sock_path = strdup(pch);
         }
       }
     }
@@ -62,7 +64,9 @@ void free_config(struct config *configuration) {
   free(configuration->serv_addr);
   free(configuration->username);
   free(configuration->passwd);
+  free(configuration->sock_path);
   configuration->serv_addr = NULL;
   configuration->username = NULL;
   configuration->passwd = NULL;
+  configuration->sock_path = NULL;
 }

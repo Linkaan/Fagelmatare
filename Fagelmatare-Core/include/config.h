@@ -32,6 +32,11 @@ struct config {
  char *serv_addr;
  char *username;
  char *passwd;
+ char *sock_path;
+ char *state_path;
+ char *start_hook;
+ char *stop_hook;
+ int pir_input;
 };
 
 int get_config(char *filename, struct config *configuration);

@@ -32,6 +32,7 @@ struct config {
  char *serv_addr;
  char *username;
  char *passwd;
+ char *sock_path;
 };
 
 int get_config(char *filename, struct config *configuration);

@@ -45,7 +45,6 @@
 #include <log.h>
 
 #define CONFIG_PATH "/etc/fagelmatare.conf"
-#define SOCKET_PATH "/tmp/shandler.sock"
 
 #define DEBUG
 #ifndef DEBUG
@@ -143,10 +142,10 @@ int main(void) {
 
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path)-1);
+  strncpy(addr.sun_path, configs.sock_path, sizeof(addr.sun_path)-1);
   addrlen = sizeof(struct sockaddr_un);
 
-  unlink(SOCKET_PATH);
+  unlink(configs.sock_path);
 
   if(bind(sock, (struct sockaddr *) &addr, addrlen) < 0) {
     log_fatal("bind error: %s\n", strerror(errno));
@@ -474,7 +473,7 @@ void *network_func(void *param) {
     }
   }
   close(*userdata->sock);
-  unlink(SOCKET_PATH);
+  unlink(userdata->configs->sock_path);
   return NULL;
 }
 

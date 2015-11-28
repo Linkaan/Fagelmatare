@@ -50,14 +50,7 @@
 #include <config.h>
 #include <log.h>
 
-#define PIR_SENSOR_GPIO_PIN 21
-
-#define STOP_RECORD_HOOK "/usr/src/picam/hooks/stop_record"
-#define START_RECORD_HOOK "/usr/src/picam/hooks/start_record"
-#define STATE_DIR "/usr/src/picam/state"
-
 #define CONFIG_PATH "/etc/fagelmatare.conf"
-#define SOCKET_PATH "/tmp/shandler.sock"
 
 #define DEBUG
 #ifndef DEBUG
@@ -181,11 +174,11 @@ int main(void) {
     exit(EXIT_FAILURE);
   }
 
-  start_watching_state(&state_thread, STATE_DIR, on_file_create, 1);
+  start_watching_state(&state_thread, configs.state_path, on_file_create, 1);
 
   /* register a callback function (interrupt_callback) on wiringpi when a
   iterrupt is received on the pir sensor gpio pin. */
-  if(wiringPiISR(PIR_SENSOR_GPIO_PIN, INT_EDGE_BOTH, &interrupt_callback, &userdata) < 0) {
+  if(wiringPiISR(configs.pir_input, INT_EDGE_BOTH, &interrupt_callback, &userdata) < 0) {
     log_fatal("error in wiringPiISR: %s\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
@@ -238,7 +231,7 @@ int main(void) {
   free_config(&configs);
 
   if(atomic_load(&rec)) {
-    if(touch(STOP_RECORD_HOOK)) {
+    if(touch(configs.stop_hook)) {
       log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
       atomic_store(&rec, true);
     }else {
@@ -293,7 +286,7 @@ void *timer_func(void *param) {
       if(need_quit(userdata->mxq)) break;
       read(atomic_load(&fd), NULL, 8);
       if(atomic_load(&rec)) {
-        if(touch(STOP_RECORD_HOOK)) {
+        if(touch(userdata->configs->stop_hook)) {
           log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
           atomic_store(&rec, true);
         }else {
@@ -315,7 +308,7 @@ void *timer_func(void *param) {
   pthread_mutex_unlock(&userdata_mutex);
 
   if(atomic_load(&rec)) {
-    if(touch(STOP_RECORD_HOOK)) {
+    if(touch(userdata->configs->stop_hook)) {
       log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
       atomic_store(&rec, true);
     }else {
@@ -364,7 +357,7 @@ void *ping_func(void *param) {
 
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path)-1);
+  strncpy(addr.sun_path, userdata->configs->sock_path, sizeof(addr.sun_path)-1);
   addrlen = sizeof(struct sockaddr_un);
 
   ConnectToPeer:
@@ -485,7 +478,7 @@ void *ping_func(void *param) {
             _log_debug("caught event start_record\n");
             reset_timer();
             if(atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
-              if(touch(START_RECORD_HOOK)) {
+              if(touch(userdata->configs->start_hook)) {
                 log_fatal("could not create start recording hook (%s)\n", strerror(errno));
                 atomic_store(&rec, false);
               }else {
@@ -501,7 +494,7 @@ void *ping_func(void *param) {
           }else if(!strncasecmp("stop_record", buf, strlen(buf))) {
             _log_debug("caught event stop_record\n");
             if(atomic_load(&rec)) {
-              if(touch(STOP_RECORD_HOOK)) {
+              if(touch(userdata->configs->stop_hook)) {
                 log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
                 atomic_store(&rec, true);
               }else {
@@ -563,7 +556,7 @@ char* current_time(void) {
   if((buffer = malloc(20)) == NULL) {
     return NULL;
   }
-  time_t now = time(0);
+  time_t now = time(NULL);
   strftime(buffer, 20, "%F %H:%M:%S", localtime(&now));
   return buffer;
 }
@@ -580,12 +573,12 @@ void interrupt_callback(void *param) {
   //memcpy(rawtime, &now, sizeof(time_t))
 
   // add interrupt event to mysql database
-  if(digitalRead(PIR_SENSOR_GPIO_PIN) == HIGH) {
+  if(digitalRead(userdata->configs->pir_input) == HIGH) {
     atomic_store(&mpir, (_Bool) 1);
     /**if(atomic_compare_exchange_weak(&mping, (_Bool[]) { true }, false)) {*/
       reset_timer();
       if(atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
-        if(touch(START_RECORD_HOOK)) {
+        if(touch(userdata->configs->start_hook)) {
           log_fatal("could not create start recording hook (%s)\n", strerror(errno));
           atomic_store(&rec, false);
         }else {
