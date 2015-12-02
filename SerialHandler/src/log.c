@@ -34,6 +34,30 @@
 static int log_level = LOG_LEVEL_NONE;
 static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+void log_level_string(char *lls_buffer, int msg_log_level) {
+  switch (msg_log_level) {
+    default:
+    case LOG_LEVEL_NONE:
+      strcpy(lls_buffer, "NONE");
+      break;
+    case LOG_LEVEL_DEBUG:
+      strcpy(lls_buffer, "DEBUG");
+      break;
+    case LOG_LEVEL_INFO:
+      strcpy(lls_buffer, "INFO");
+      break;
+    case LOG_LEVEL_WARN:
+      strcpy(lls_buffer, "WARNING");
+      break;
+    case LOG_LEVEL_ERROR:
+      strcpy(lls_buffer, "ERROR");
+      break;
+    case LOG_LEVEL_FATAL:
+      strcpy(lls_buffer, "FATAL");
+      break;
+  }
+}
+
 void log_set_level(int level) {
   log_level = level;
 }
@@ -55,6 +79,11 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
 
   pthread_mutex_lock(&log_mutex);
   if(msg_log_level >= log_level) {
+    char buffer[20], lls_buffer[10];
+
+    strftime(buffer, 20, "%F %H:%M:%S", localtime(rawtime));
+    log_level_string(lls_buffer, msg_log_level);
+    fprintf(stdout, "[%s: %s] ", lls_buffer, buffer);
     vfprintf(stdout, format, args);
   }
   if((err = log_to_database(&ent)) != 0) {
@@ -65,7 +94,6 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
     }
   }
   free(rawtime);
-  rawtime = NULL;
   pthread_mutex_unlock(&log_mutex);
 }
 
@@ -73,6 +101,19 @@ void log_msg_level(int msg_log_level, time_t *rawtime, const char *source, const
   va_list args;
   va_start(args, format);
   log_msg(msg_log_level, rawtime, source, format, args);
+  va_end(args);
+}
+
+void log_debug(const char *format, ...) {
+  char buffer[20];
+  time_t rawtime;
+
+  va_list args;
+  va_start(args, format);
+  time(&rawtime);
+  strftime(buffer, 20, "%F %H:%M:%S", localtime(&rawtime));
+  fprintf(stdout, "[DEBUG: %s] ", buffer);
+  vfprintf(stdout, format, args);
   va_end(args);
 }
 

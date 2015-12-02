@@ -38,7 +38,7 @@
 #ifndef DEBUG
 #define _log_debug(format, ...)
 #else
-#define _log_debug(format, ...) fprintf(stdout, format, ##__VA_ARGS__)
+#define _log_debug(format, ...) log_debug(format, ##__VA_ARGS__)
 #endif
 
 static pthread_mutex_t ehandler_mutex = PTHREAD_MUTEX_INITIALIZER;
