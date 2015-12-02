@@ -56,7 +56,7 @@
 #ifndef DEBUG
 #define _log_debug(format, ...)
 #else
-#define _log_debug(format, ...) fprintf(stdout, format, ##__VA_ARGS__)
+#define _log_debug(format, ...) log_debug(format, ##__VA_ARGS__)
 #endif
 
 typedef struct {
@@ -93,7 +93,6 @@ void reset_timer  	(void);
 int fdutimensat     (int fd, int dir, char const *file, struct timespec const ts[2], int atflag);
 int on_file_create  (char *filename, char *content);
 
-char* current_time  (void);
 void die		        (int sig);
 void alarm_handler  (int sig);
 
@@ -504,16 +503,6 @@ void reset_timer(void) {
   }
 }
 
-char* current_time(void) {
-  char *buffer;
-  if((buffer = malloc(20)) == NULL) {
-    return NULL;
-  }
-  time_t now = time(NULL);
-  strftime(buffer, 20, "%F %H:%M:%S", localtime(&now));
-  return buffer;
-}
-
 /*
  * callback function for any interrupts received on registered pin
  */
@@ -605,13 +594,9 @@ int on_file_create(char *filename, char *content) {
       clock_gettime(CLOCK_REALTIME, &end);
       double elapsed = (end.tv_sec-start.tv_sec)*1E9 + end.tv_nsec-start.tv_nsec;
 
-      char *datetime = current_time();
-      _log_debug("recorded video of length %lf seconds at %s\n", elapsed/1E9, datetime);
-      free(datetime);
+      _log_debug("recorded video of length %lf seconds\n", elapsed/1E9);
     }else {
-      char *datetime = current_time();
-      _log_debug("started recording at %s\n", datetime);
-      free(datetime);
+      _log_debug("started recording\n");
 
       clock_gettime(CLOCK_REALTIME, &start);
     }
