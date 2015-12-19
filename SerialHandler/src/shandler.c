@@ -332,7 +332,9 @@ char *read_string_until(int sfd, char terminator, int n) {
     return NULL;
   }
   ch = -1;
-  while(counter < n && (ch = serialGetchar(sfd)) > 0) {
+
+  _log_debug("-----start reading serial string-----\n");
+  while(counter < n && (ch = serialGetchar(sfd)) >= 0) {
     str[counter-1] = ch;
     tmp = realloc(str, (++counter) * sizeof(char));
     if(tmp == NULL) {
@@ -341,8 +343,13 @@ char *read_string_until(int sfd, char terminator, int n) {
     }else {
       str = tmp;
     }
-    if(ch == terminator) break;
+    _log_debug("read: \"%c\" (avail: %d)\n", ch, serialDataAvail(sfd));
+    if(ch == terminator) {
+      _log_debug("-----stop reading serial string-----\n");
+      return str;
+    }
   }
+  _log_debug("-----stop reading serial string-----\n");
   if(ch < 0) {
     free(str);
     return NULL;

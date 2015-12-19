@@ -212,7 +212,7 @@ int main(void) {
     fprintf(subtitles,
       "text=OUTSIDE %.1f'C\\nCPU %.1f'C\n"
       "font_name=FreeMono:style=Bold\n"
-      "pt=12\n"
+      "pt=20\n"
       "layout_align=top,left\n"
       "text_align=left\n"
       "horizontal_margin=30\n"
