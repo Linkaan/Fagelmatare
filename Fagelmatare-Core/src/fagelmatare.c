@@ -121,7 +121,7 @@ int main(void) {
 
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
-    log_fatal("could not parse configuration file: %s", strerror(errno));
+    log_fatal("could not parse configuration file: %s\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
 

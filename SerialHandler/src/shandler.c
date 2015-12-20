@@ -98,7 +98,7 @@ int main(void) {
 
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
-    log_fatal("could not parse configuration file: %s", strerror(errno));
+    log_fatal("could not parse configuration file: %s\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
 
@@ -277,7 +277,7 @@ void send_serial(char *msg, const int sock, struct user_data *userdata) {
         memmove(str, str+3, len - 3 + 1);
         event_t *event = ehandler_get(str);
         if(event == NULL || ehandler_handle(event)) {
-          log_warn("unable to handle event (%s)", str);
+          log_warn("unable to handle event (%s)\n", str);
         }
         _log_debug("caught event %s.\n", str);
         free(str);
@@ -286,7 +286,7 @@ void send_serial(char *msg, const int sock, struct user_data *userdata) {
         memmove(str, str+3, len - 3 + 1);
         break;
       }else {
-        log_error("read string violating protocol (%s)", str);
+        log_error("read string violating protocol (%s)\n", str);
         free(str);
       }
     }
@@ -381,13 +381,13 @@ void *listen_serial(void *param) {
         memmove(str, str+3, len - 3 + 1);
         event_t *event = ehandler_get(str);
         if(event == NULL || ehandler_handle(event)) {
-          log_error("unable to handle event (%s)", str);
+          log_error("unable to handle event (%s)\n", str);
         }
         //_log_debug("caught event %s.\n", str);
       }else if(!strncasecmp("/R/", str, 3)) {
-        log_error("read return string in wrong thread (%s)", str);
+        log_error("read return string in wrong thread (%s)\n", str);
       }else {
-        log_error("read string violating protocol (%s)", str);
+        log_error("read string violating protocol (%s)\n", str);
       }
     }
     free(str);
@@ -437,7 +437,7 @@ void *network_func(void *param) {
           memmove(buf, buf+3, len - 3 + 1);
           event_t *event = ehandler_get(buf);
           if(event == NULL || ehandler_handle(event)) {
-            log_error("unable to handle event (%s)", buf);
+            log_error("unable to handle event (%s)\n", buf);
           }
           _log_debug("caught event %s.\n", buf);
           close(cl);
