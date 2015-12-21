@@ -35,15 +35,8 @@
 static MYSQL *mysql;
 static MYSQL_STMT *stmt;
 
-int connect_to_database(const char *_address, const char *_user, const char *_pwd) {
-  static const char *address;
-  static const char *user;
-  static const char *pwd;
+int connect_to_database(const char *address, const char *user, const char *pwd) {
   char query[QUERY_BUFFER_SIZE];
-
-  if(_address) address = _address;
-  if(_user) user = _user;
-  if(_pwd) pwd = _pwd;
 
   if(!mysql) mysql = mysql_init(NULL);
   if(!mysql) {

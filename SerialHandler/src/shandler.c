@@ -94,7 +94,12 @@ int main(void) {
   pthread_t network_thread, serial_thread;
   pthread_mutex_t mxq, serial_mutex;
 
+  log_debug("TARGET 1 REACHED!\n");
+
   log_set_level(LOG_LEVEL_WARN);
+  log_set_configs(&configs);
+
+  log_debug("TARGET 2 REACHED!\n");
 
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
@@ -102,15 +107,21 @@ int main(void) {
     exit(EXIT_FAILURE);
   }
 
+  log_debug("TARGET 3 REACHED!\n");
+
   /* attempt to connect to database to instantiate dblogger for use */
-  if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) { // "pi", "jF9bHN7ACY7CwD3Q"
+  if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) {
     log_warn("could not connect to database (%d)\n", err);
   }
+
+  log_debug("TARGET 4 REACHED!\n");
 
   if((sfd = serialOpen("/dev/ttyAMA0", 9600)) < 0) {
     log_fatal("open serial device failed: %s\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
+
+  log_debug("TARGET 5 REACHED!\n");
 
   if(pipe(pipefd) < 0) {
     log_fatal("pipe error: %s\n", strerror(errno));

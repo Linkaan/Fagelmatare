@@ -30,6 +30,7 @@
 #include <stdarg.h>
 #include <libdblogger/dblogger.h>
 #include <libdblogger/log_entry.h>
+#include <config.h>
 
 enum {
   LOG_LEVEL_NONE = 0,
@@ -41,6 +42,7 @@ enum {
 };
 
 void log_level_string(char *lls_buffer, int msg_log_level);
+void log_set_configs(struct config *configs);
 void log_set_level(int level);
 int log_get_level(void);
 void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char *format, va_list args);

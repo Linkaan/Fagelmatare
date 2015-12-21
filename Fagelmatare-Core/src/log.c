@@ -32,6 +32,7 @@
 #include <log.h>
 
 static int log_level = LOG_LEVEL_NONE;
+static struct config log_configs;
 static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 void log_level_string(char *lls_buffer, int msg_log_level) {
@@ -56,6 +57,10 @@ void log_level_string(char *lls_buffer, int msg_log_level) {
       strcpy(lls_buffer, "FATAL");
       break;
   }
+}
+
+void log_set_configs(struct config *configs) {
+  log_configs = *configs;
 }
 
 void log_set_level(int level) {
@@ -88,7 +93,7 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
   }
   if((err = log_to_database(&ent)) != 0) {
     if((err != CR_SERVER_GONE_ERROR && err != -1) ||
-      (err = connect_to_database(NULL, NULL, NULL)) != 0 ||
+      (err = connect_to_database(log_configs.serv_addr, log_configs.username, log_configs.passwd)) != 0 ||
       (err = log_to_database (&ent)) != 0) {
       fprintf(stderr, "could not log to database (%d)\n", err);
     }
