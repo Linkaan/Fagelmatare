@@ -32,6 +32,7 @@
 #include <log.h>
 
 static int log_level = LOG_LEVEL_NONE;
+static FILE *out_stream = NULL;
 static struct config log_configs;
 static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -63,6 +64,10 @@ void log_set_configs(struct config *configs) {
   log_configs = *configs;
 }
 
+void log_set_stream(FILE *stream) {
+  out_stream = stream;
+}
+
 void log_set_level(int level) {
   log_level = level;
 }
@@ -74,6 +79,10 @@ int log_get_level(void) {
 void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char *format, const va_list args) {
   int err;
   log_entry ent;
+
+  if(out_stream == NULL) {
+    out_stream = stdout;
+  }
 
   memset(&ent, 0, sizeof(log_entry));
 
@@ -109,18 +118,23 @@ void log_msg_level(int msg_log_level, time_t *rawtime, const char *source, const
   va_end(args);
 }
 
+/* TODO create function log_msg_db and log_msg */
 void log_debug(const char *format, ...) {
   char buffer[20];
   time_t rawtime;
 
+  time(&rawtime);
+  pthread_mutex_lock(&log_mutex);
+  if(out_stream == NULL) {
+    out_stream = stdout;
+  }
   va_list args;
   va_start(args, format);
-  time(&rawtime);
   strftime(buffer, 20, "%F %H:%M:%S", localtime(&rawtime));
-  //log_level_string(lls_buffer, LOG_LEVEL_DEBUG);
-  fprintf(stdout, "[DEBUG: %s] ", buffer);
-  vfprintf(stdout, format, args);
+  fprintf(out_stream, "[DEBUG: %s] ", buffer);
+  vfprintf(out_stream, format, args);
   va_end(args);
+  pthread_mutex_unlock(&log_mutex);
 }
 
 void log_info(const char *format, ...) {

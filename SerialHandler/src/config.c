@@ -51,6 +51,8 @@ int get_config(char *filename, struct config *configuration) {
           configuration->passwd = strdup(pch);
         }else if(!strcmp(pch, "socket_path") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->sock_path = strdup(pch);
+        }else if(!strcmp(pch, "shandler_log_file") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->shandler_log = strdup(pch);
         }
       }
     }

@@ -32,6 +32,7 @@ struct config {
  char *serv_addr;
  char *username;
  char *passwd;
+ char *fagelmatare_log;
  char *sock_path;
  char *state_path;
  char *start_hook;

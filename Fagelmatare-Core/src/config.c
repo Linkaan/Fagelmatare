@@ -52,6 +52,8 @@ int get_config(char *filename, struct config *configuration) {
           configuration->passwd = strdup(pch);
         }else if(!strcmp(pch, "socket_path") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->sock_path = strdup(pch);
+        }else if(!strcmp(pch, "fagelmatare_log_file") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->fagelmatare_log = strdup(pch);
         }else if(!strcmp(pch, "state_path") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->state_path = strdup(pch);
         }else if(!strcmp(pch, "start_hook") && (pch = strtok(NULL, DELIM)) != NULL) {

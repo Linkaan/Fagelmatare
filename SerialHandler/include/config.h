@@ -32,6 +32,7 @@ struct config {
  char *serv_addr;
  char *username;
  char *passwd;
+ char *shandler_log;
  char *sock_path;
 };
 

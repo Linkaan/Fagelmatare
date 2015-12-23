@@ -107,7 +107,21 @@ int main(void) {
   pthread_mutex_t mxq; /* mutex used as quit flag */
   struct config configs;
 
-  printf("TARGET 1 REACHED!\n"); // segmentation fault before this prints to console.
+  /* parse configuration file */
+  if(get_config(CONFIG_PATH, &configs)) {
+    printf("could not parse configuration file: %s\n", strerror(errno));
+    exit(EXIT_FAILURE);
+  }
+
+  log_stream = fopen(configs.fagelmatare_log, "w");
+  if(log_stream == NULL) {
+     printf("error opening shandler log file for writing: %s\n", strerror(errno));
+     exit(EXIT_FAILURE);
+  }
+
+  log_set_level(LOG_LEVEL_WARN);
+  log_set_stream(log_stream);
+  log_set_configs(&configs);
 
   /* init user_data struct used by threads for synchronization */
   struct user_data userdata = {
@@ -117,28 +131,20 @@ int main(void) {
     .results = &results,
   };
 
+  printf("TARGET 1 REACHED!\n");
+
   /* initialize wiringpi */
   wiringPiSetup();
-  log_set_level(LOG_LEVEL_WARN);
-  log_set_configs(&configs);
 
   printf("TARGET 2 REACHED!\n");
-
-  /* parse configuration file */
-  if(get_config(CONFIG_PATH, &configs)) {
-    printf("could not parse configuration file: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
-  }
-
-  printf("TARGET 3 REACHED!\n");
 
   /* attempt to connect to database to instantiate dblogger for use */
   if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) {
     //log_warn("could not connect to database (%d)\n", err);
-    printf("could not connect to database (%d)\n", err);
+    log_debug("could not connect to database (%d)\n", err);
   }
 
-  printf("TARGET 4 REACHED!\n");
+  printf("TARGET 3 REACHED!\n");
 
   atomic_store(&fd, timerfd_create(CLOCK_REALTIME, 0));
   if(atomic_load(&fd) < 0) {

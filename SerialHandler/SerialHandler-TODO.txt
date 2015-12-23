@@ -3,4 +3,5 @@
 -------------------------
 
 - Code needs refactoring
-- Fix bug with read_string_until which only reads first byte
+- Change serialization protocol to binary.
+- Create function log_msg_db and log_msg in log.c

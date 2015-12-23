@@ -88,18 +88,12 @@ int main(void) {
   int pipefd[2];
   struct sockaddr_un addr;
   struct config configs;
+  FILE *log_stream;
   socklen_t addrlen;
   serial_args* sargs;
   lstack_t results;
   pthread_t network_thread, serial_thread;
   pthread_mutex_t mxq, serial_mutex;
-
-  printf("TARGET 1 REACHED!\n");
-
-  log_set_level(LOG_LEVEL_WARN);
-  log_set_configs(&configs);
-
-  printf("TARGET 2 REACHED!\n");
 
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
@@ -107,21 +101,31 @@ int main(void) {
     exit(EXIT_FAILURE);
   }
 
-  printf("TARGET 3 REACHED!\n");
+  log_stream = fopen(configs.shandler_log, "w");
+  if(log_stream == NULL) {
+     printf("error opening shandler log file for writing: %s\n", strerror(errno));
+     exit(EXIT_FAILURE);
+  }
+
+  log_set_level(LOG_LEVEL_WARN);
+  log_set_stream(log_stream);
+  log_set_configs(&configs);
+
+  printf("TARGET 2 REACHED!\n");
 
   /* attempt to connect to database to instantiate dblogger for use */
   if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) {
-    printf("could not connect to database (%d)\n", err);
+    log_debug("could not connect to database (%d)\n", err);
   }
 
-  printf("TARGET 4 REACHED!\n");
+  printf("TARGET 3 REACHED!\n");
 
   if((sfd = serialOpen("/dev/ttyAMA0", 9600)) < 0) {
     log_fatal("open serial device failed: %s\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
 
-  printf("TARGET 5 REACHED!\n");
+  printf("TARGET 4 REACHED!\n");
 
   if(pipe(pipefd) < 0) {
     log_fatal("pipe error: %s\n", strerror(errno));
