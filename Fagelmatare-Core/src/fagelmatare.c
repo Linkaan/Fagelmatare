@@ -99,13 +99,14 @@ void alarm_handler  (int sig);
 int main(void) {
   int err;
   int pipefd[2];
+  struct config configs;
+  FILE *log_stream;
   pthread_t timer_thread;
   pthread_t queue_thread;
   pthread_t ping_thread;
   pthread_t state_thread;
   lstack_t results; /* lstack_t struct used by lstack */
   pthread_mutex_t mxq; /* mutex used as quit flag */
-  struct config configs;
 
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
@@ -113,7 +114,7 @@ int main(void) {
     exit(EXIT_FAILURE);
   }
 
-  log_stream = fopen(configs.fagelmatare_log, "w");
+  log_stream = fopen("/mnt/storage/logs/test.log", "w");
   if(log_stream == NULL) {
      printf("error opening shandler log file for writing: %s\n", strerror(errno));
      exit(EXIT_FAILURE);
@@ -123,6 +124,14 @@ int main(void) {
   log_set_stream(log_stream);
   log_set_configs(&configs);
 
+  char filename[255], fd_path[255];
+
+  rewind(log_stream);
+  fprintf(log_stream, "Sure, blame it on your ISP!\n");
+  sprintf(fd_path, "/proc/self/fd/%d", fileno(log_stream));
+  readlink(fd_path, filename, 255);
+  fprintf(stdout, "Logged to out_stream (%s:%d)\n", filename, fileno(log_stream));
+
   /* init user_data struct used by threads for synchronization */
   struct user_data userdata = {
     .configs = &configs,
@@ -131,12 +140,12 @@ int main(void) {
     .results = &results,
   };
 
-  printf("TARGET 1 REACHED!\n");
+  log_debug("TARGET 1 REACHED!\n");
 
   /* initialize wiringpi */
   wiringPiSetup();
 
-  printf("TARGET 2 REACHED!\n");
+  log_debug("TARGET 2 REACHED!\n");
 
   /* attempt to connect to database to instantiate dblogger for use */
   if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) {
@@ -144,7 +153,7 @@ int main(void) {
     log_debug("could not connect to database (%d)\n", err);
   }
 
-  printf("TARGET 3 REACHED!\n");
+  log_debug("TARGET 3 REACHED!\n");
 
   atomic_store(&fd, timerfd_create(CLOCK_REALTIME, 0));
   if(atomic_load(&fd) < 0) {
@@ -230,6 +239,8 @@ int main(void) {
   write(pipefd[1], NULL, 8);
   close(pipefd[1]);
   close(atomic_load(&fd));
+
+  fclose(log_stream);
 
   stop_watching_state();
   pthread_join(ping_thread, NULL);
