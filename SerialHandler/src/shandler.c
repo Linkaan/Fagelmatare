@@ -111,21 +111,18 @@ int main(void) {
   log_set_stream(log_stream);
   log_set_configs(&configs);
 
-  log_debug("TARGET 1 REACHED!\n");
+  // Turn off buffering for log_stream
+  setvbuf(log_stream, NULL, _IONBF, 0);
 
   /* attempt to connect to database to instantiate dblogger for use */
   if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) {
     log_debug("could not connect to database (%d)\n", err);
   }
 
-  log_debug("TARGET 2 REACHED!\n");
-
   if((sfd = serialOpen("/dev/ttyAMA0", 9600)) < 0) {
     log_fatal("open serial device failed: %s\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
-
-  log_debug("TARGET 3 REACHED!\n");
 
   if(pipe(pipefd) < 0) {
     log_fatal("pipe error: %s\n", strerror(errno));

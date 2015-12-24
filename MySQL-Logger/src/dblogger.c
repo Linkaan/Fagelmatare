@@ -32,8 +32,8 @@
 
 #define QUERY_BUFFER_SIZE 589
 
-static MYSQL *mysql;
-static MYSQL_STMT *stmt;
+static MYSQL *mysql = NULL;
+static MYSQL_STMT *stmt = NULL;
 
 int connect_to_database(const char *address, const char *user, const char *pwd) {
   char query[QUERY_BUFFER_SIZE];

@@ -114,9 +114,9 @@ int main(void) {
     exit(EXIT_FAILURE);
   }
 
-  log_stream = fopen("/mnt/storage/logs/test.log", "w");
+  log_stream = fopen(configs.fagelmatare_log, "w");
   if(log_stream == NULL) {
-     printf("error opening shandler log file for writing: %s\n", strerror(errno));
+     printf("error opening fagelmatare log file for writing: %s\n", strerror(errno));
      exit(EXIT_FAILURE);
   }
 
@@ -124,13 +124,8 @@ int main(void) {
   log_set_stream(log_stream);
   log_set_configs(&configs);
 
-  char filename[255], fd_path[255];
-
-  rewind(log_stream);
-  fprintf(log_stream, "Sure, blame it on your ISP!\n");
-  sprintf(fd_path, "/proc/self/fd/%d", fileno(log_stream));
-  readlink(fd_path, filename, 255);
-  fprintf(stdout, "Logged to out_stream (%s:%d)\n", filename, fileno(log_stream));
+  // Turn off buffering for log_stream
+  setvbuf(log_stream, NULL, _IONBF, 0);
 
   /* init user_data struct used by threads for synchronization */
   struct user_data userdata = {
@@ -140,20 +135,16 @@ int main(void) {
     .results = &results,
   };
 
-  log_debug("TARGET 1 REACHED!\n");
-
   /* initialize wiringpi */
   wiringPiSetup();
 
-  log_debug("TARGET 2 REACHED!\n");
+  log_warn("TARGET 1 REACHED!");
 
   /* attempt to connect to database to instantiate dblogger for use */
   if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) {
     //log_warn("could not connect to database (%d)\n", err);
     log_debug("could not connect to database (%d)\n", err);
   }
-
-  log_debug("TARGET 3 REACHED!\n");
 
   atomic_store(&fd, timerfd_create(CLOCK_REALTIME, 0));
   if(atomic_load(&fd) < 0) {
