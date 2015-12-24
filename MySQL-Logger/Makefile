@@ -27,7 +27,7 @@ IDIR := ./include
 CFLAGS := -I$(IDIR) -O3 -Wall -Werror -fPIC -march=armv6zk -mfloat-abi=hard -mfpu=vfp -I/usr/include/mysql -DBIG_JOINS=1 -fno-strict-aliasing -g
 CC := gcc
 MAJOR := 0
-MINOR := 1
+MINOR := 2
 NAME := dblogger
 SRCDIR := ./src
 OUTDIR := ./lib
@@ -36,7 +36,7 @@ VERSION := $(MAJOR).$(MINOR)
 all: $(OUTDIR)/lib$(NAME).so.$(VERSION)
 
 $(OUTDIR)/lib$(NAME).so.$(VERSION): $(NAME).o
-	$(CC) -shared -Wl,-soname,lib$(NAME).so.$(MAJOR) $^ -o $@ -L/usr/lib/arm-linux-gnueabihf -lmysqlclient -lpthread -lz -lm -lrt -ldl
+	$(CC) -shared -Wl,-soname,lib$(NAME).so.$(MAJOR) $^ -o $@ -L/usr/lib/arm-linux-gnueabihf -lmysqlclient_r -lpthread -lz -lm -lrt -ldl
 
 $(NAME).o: $(SRCDIR)/$(NAME).c
 	$(CC) $(CFLAGS) -c -o $@ $(SRCDIR)/$(NAME).c

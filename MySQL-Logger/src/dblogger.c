@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <pthread.h>
 #include <mysql.h>
 #include <my_global.h>
 #include <log_entry.h>
@@ -34,31 +35,38 @@
 
 static MYSQL *mysql = NULL;
 static MYSQL_STMT *stmt = NULL;
+static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int connect_to_database(const char *address, const char *user, const char *pwd) {
   char query[QUERY_BUFFER_SIZE];
 
+  pthread_mutex_lock(&log_mutex);
   if(!mysql) mysql = mysql_init(NULL);
   if(!mysql) {
+    pthread_mutex_unlock(&log_mutex);
     return mysql_errno(mysql);
   }
 
   mysql_options(mysql, MYSQL_OPT_RECONNECT, &(int){ 1 });
   if(!mysql_real_connect(mysql, address, user, pwd, "fagelmatare", 0, NULL, 0)) {
     if(mysql) mysql_close(mysql);
+    pthread_mutex_unlock(&log_mutex);
     return mysql_errno(mysql);
   }
 
   stmt = mysql_stmt_init(mysql);
   if(!stmt) {
+    pthread_mutex_unlock(&log_mutex);
     return CR_OUT_OF_MEMORY;
   }
 
   strcpy(query, "INSERT INTO `logg` (severity,event,source,datetime)"
 						    "VALUES(?,?,?,?)");
   if(mysql_stmt_prepare(stmt, query, strlen(query))) {
+    pthread_mutex_unlock(&log_mutex);
     return mysql_stmt_errno(stmt);
   }
+  pthread_mutex_unlock(&log_mutex);
 
   return 0;
 }
@@ -68,11 +76,15 @@ int log_to_database(log_entry *ent) {
   MYSQL_BIND sbind[4];
 
   if(!ent) return EFAULT;
+
+  pthread_mutex_lock(&log_mutex);
   if(!mysql || !stmt) {
+    pthread_mutex_unlock(&log_mutex);
     return -1;
   }
 
   if(mysql_ping(mysql)) {
+    pthread_mutex_unlock(&log_mutex);
     return mysql_errno(mysql);
   }
 
@@ -110,8 +122,10 @@ int log_to_database(log_entry *ent) {
   ts.second= ent->tm_info->tm_sec;
 
   if(mysql_stmt_execute(stmt)) {
+    pthread_mutex_unlock(&log_mutex);
     return mysql_stmt_errno(stmt);
   }
+  pthread_mutex_unlock(&log_mutex);
 
   return 0;
 }
@@ -119,10 +133,13 @@ int log_to_database(log_entry *ent) {
 int disconnect(void) {
   int err = 0;
 
+  pthread_mutex_lock(&log_mutex);
   if(mysql_stmt_close(stmt)) {
     err = mysql_stmt_errno(stmt);
   }
 
   mysql_close(mysql);
+  pthread_mutex_unlock(&log_mutex);
+
   return err;
 }

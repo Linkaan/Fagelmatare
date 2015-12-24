@@ -97,19 +97,20 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
 
     strftime(buffer, 20, "%F %H:%M:%S", localtime(rawtime));
     log_level_string(lls_buffer, msg_log_level);
-    fprintf(out_stream, "[%s: %s] ", lls_buffer, buffer);
-    vfprintf(out_stream, format, args);
+    fprintf(stdout, "[%s: %s] ", lls_buffer, buffer);
+    vfprintf(stdout, format, args);
   }
   if((err = log_to_database(&ent)) != 0) {
     if((err != CR_SERVER_GONE_ERROR && err != -1) ||
       (err = connect_to_database(log_configs.serv_addr, log_configs.username, log_configs.passwd)) != 0 ||
       (err = log_to_database (&ent)) != 0) {
-      fprintf(out_stream, "could not log to database (%d)\n", err);
+      fprintf(stderr, "could not log to database (%d)\n", err);
     }
   }
   free(rawtime);
   pthread_mutex_unlock(&log_mutex);
 }
+
 void log_msg_level(int msg_log_level, time_t *rawtime, const char *source, const char *format, ...) {
   va_list args;
   va_start(args, format);
