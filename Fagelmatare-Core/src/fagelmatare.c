@@ -88,7 +88,7 @@ int fdutimensat     (int fd, int dir, char const *file, struct timespec const ts
 int on_file_create  (char *filename, char *content);
 
 void die		        (int sig);
-void alarm_handler  (int sig);
+void quit  (int sig);
 
 int main(void) {
   int err;
@@ -171,7 +171,7 @@ int main(void) {
 
   // initialize a semaphore and register signal handlers
   sem_init(&sem, 0, 0);
-  signal(SIGALRM, alarm_handler);
+  signal(SIGALRM, quit);
   signal(SIGHUP, die);
   signal(SIGINT, die);
   signal(SIGQUIT, die);
@@ -213,7 +213,6 @@ int main(void) {
   pthread_join(state_thread, NULL);
   pthread_mutex_destroy(&mxq);
   lstack_free(&results);
-  free_config(&configs);
 
   if(atomic_load(&rec)) {
     if(touch(configs.stop_hook)) {
@@ -227,7 +226,9 @@ int main(void) {
   }
 
   log_exit();
+  free_config(&configs);
   alarm(0);
+
   exit(EXIT_SUCCESS);
 }
 
@@ -583,31 +584,40 @@ int fdutimensat(int fd, int dir, char const *file, struct timespec const ts[2], 
 }
 
 void die(int sig) {
-  static atomic_bool called = ATOMIC_VAR_INIT(false);
-  if(atomic_compare_exchange_weak(&called, (_Bool[]) { false }, true)) {
-    if(sig != SIGINT && sig != SIGTERM)
-      log_fatal("received signal %d (%s), exiting.\n", sig, strsignal(sig));
-    sem_post(&sem);
-    alarm(5);
-  }else {
-    log_fatal("received signal %d (%s), during cleanup.\n", sig, strsignal(sig));
-  }
+  struct sigaction act;
+  sigfillset(&act.sa_mask);
+  act.sa_handler = SIG_DFL;
+  sigaction(SIGHUP, &act, NULL);
+  sigaction(SIGINT, &act, NULL);
+  sigaction(SIGQUIT, &act, NULL);
+  sigaction(SIGILL, &act, NULL);
+  sigaction(SIGTRAP, &act, NULL);
+  sigaction(SIGABRT, &act, NULL);
+  sigaction(SIGIOT, &act, NULL);
+  sigaction(SIGFPE, &act, NULL);
+  sigaction(SIGKILL, &act, NULL);
+  sigaction(SIGUSR1, &act, NULL);
+  sigaction(SIGSEGV, &act, NULL);
+  sigaction(SIGUSR2, &act, NULL);
+  sigaction(SIGPIPE, &act, NULL);
+  sigaction(SIGTERM, &act, NULL);
+#ifdef SIGSTKFLT
+  sigaction(SIGSTKFLT, &act, NULL);
+#endif
+  sigaction(SIGCHLD, &act, NULL);
+  sigaction(SIGCONT, &act, NULL);
+  sigaction(SIGSTOP, &act, NULL);
+  sigaction(SIGTSTP, &act, NULL);
+  sigaction(SIGTTIN, &act, NULL);
+  sigaction(SIGTTOU, &act, NULL);
+
+  if(sig != SIGINT && sig != SIGTERM)
+    log_fatal("received signal %d (%s), exiting.\n", sig, strsignal(sig));
+  sem_post(&sem);
+  alarm(5);
 }
 
-void timer_handler(int signum) {
- static int toggle = 0, count = 0;
- printf("called timer %d times\n", ++count);
- //debug_interrupt_callback(NULL, toggle);
- toggle = !toggle;
-}
-
-void alarm_handler(int sig) {
-  int sval = 0;
-
-  //atomic_compare_exchange_weak(&mping, (_Bool[]) { true }, false);
-  sem_getvalue(&sem, &sval);
-  if(sval) {
-    log_fatal("unclean exit, from signal %d (%s).\n", sig, strsignal(sig));
-    exit(1);
-  }
+void quit(int sig) {
+  log_fatal("unclean exit, from signal %d (%s).\n", sig, strsignal(sig));
+  exit(1);
 }

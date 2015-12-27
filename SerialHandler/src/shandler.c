@@ -88,7 +88,6 @@ int main(void) {
   int pipefd[2];
   struct sockaddr_un addr;
   struct config configs;
-  FILE *log_stream;
   socklen_t addrlen;
   serial_args* sargs;
   lstack_t results;
@@ -101,22 +100,14 @@ int main(void) {
     exit(EXIT_FAILURE);
   }
 
-  log_stream = fopen(configs.shandler_log, "w");
-  if(log_stream == NULL) {
-     printf("error opening shandler log file for writing: %s\n", strerror(errno));
-     exit(EXIT_FAILURE);
-  }
+  struct user_data_log userdata_log = {
+    .log_level= LOG_LEVEL_WARN,
+    .configs  = &configs,
+  };
 
-  log_set_level(LOG_LEVEL_WARN);
-  log_set_stream(log_stream);
-  log_set_configs(&configs);
-
-  // Turn off buffering for log_stream
-  setvbuf(log_stream, NULL, _IONBF, 0);
-
-  /* attempt to connect to database to instantiate dblogger for use */
-  if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) {
-    log_debug("could not connect to database (%d)\n", err);
+  if(log_init(&userdata_log)) {
+    printf("error initalizing log thread: %s\n", strerror(errno));
+    exit(EXIT_FAILURE);
   }
 
   if((sfd = serialOpen("/dev/ttyAMA0", 9600)) < 0) {
@@ -249,21 +240,21 @@ int main(void) {
   write(pipefd[1], NULL, 8);
   close(pipefd[1]);
 
-  fclose(log_stream);
-
   pthread_join(network_thread,NULL);
   pthread_join(serial_thread, NULL);
   pthread_mutex_destroy(&mxq);
   pthread_mutex_destroy(&serial_mutex);
   lstack_free(&results);
   ehandler_cleanup();
-  free_config(&configs);
 
   if((err = disconnect()) != 0) {
     _log_debug("error while disconnecting from database (%d)\n", err);
   }
 
+  log_exit();
+  free_config(&configs);
   alarm(0);
+
   exit(EXIT_SUCCESS);
 }
 
@@ -499,15 +490,37 @@ void *network_func(void *param) {
 }
 
 void die(int sig) {
-  static atomic_bool called = ATOMIC_VAR_INIT(false);
-  if(atomic_compare_exchange_weak(&called, (_Bool[]) { false }, true)) {
-    if(sig != SIGINT && sig != SIGTERM)
-      log_fatal("received signal %d (%s), exiting.\n", sig, strsignal(sig));
-    sem_post(&sem);
-    alarm(5);
-  }else {
-    log_fatal("received signal %d (%s), during cleanup.\n", sig, strsignal(sig));
-  }
+  struct sigaction act;
+  sigfillset(&act.sa_mask);
+  act.sa_handler = SIG_DFL;
+  sigaction(SIGHUP, &act, NULL);
+  sigaction(SIGINT, &act, NULL);
+  sigaction(SIGQUIT, &act, NULL);
+  sigaction(SIGILL, &act, NULL);
+  sigaction(SIGTRAP, &act, NULL);
+  sigaction(SIGABRT, &act, NULL);
+  sigaction(SIGIOT, &act, NULL);
+  sigaction(SIGFPE, &act, NULL);
+  sigaction(SIGKILL, &act, NULL);
+  sigaction(SIGUSR1, &act, NULL);
+  sigaction(SIGSEGV, &act, NULL);
+  sigaction(SIGUSR2, &act, NULL);
+  sigaction(SIGPIPE, &act, NULL);
+  sigaction(SIGTERM, &act, NULL);
+#ifdef SIGSTKFLT
+  sigaction(SIGSTKFLT, &act, NULL);
+#endif
+  sigaction(SIGCHLD, &act, NULL);
+  sigaction(SIGCONT, &act, NULL);
+  sigaction(SIGSTOP, &act, NULL);
+  sigaction(SIGTSTP, &act, NULL);
+  sigaction(SIGTTIN, &act, NULL);
+  sigaction(SIGTTOU, &act, NULL);
+
+  if(sig != SIGINT && sig != SIGTERM)
+    log_fatal("received signal %d (%s), exiting.\n", sig, strsignal(sig));
+  sem_post(&sem);
+  alarm(5);
 }
 
 void quit(int sig) {

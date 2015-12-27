@@ -25,16 +25,24 @@
  */
 
 #include <stdio.h>
+#include <unistd.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <errno.h>
 #include <pthread.h>
+#include <lstack.h>
 #include <log.h>
 
-static int log_level = LOG_LEVEL_NONE;
-static FILE *out_stream = NULL;
-static struct config log_configs;
-static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mxq = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t mxs = PTHREAD_MUTEX_INITIALIZER;
+
+static FILE *log_stream;
+static pthread_t log_thread;
+static lstack_t log_stack;
+
+static int need_quit(pthread_mutex_t *);
+void *log_func(void *);
 
 void log_level_string(char *lls_buffer, int msg_log_level) {
   switch (msg_log_level) {
@@ -60,55 +68,112 @@ void log_level_string(char *lls_buffer, int msg_log_level) {
   }
 }
 
-void log_set_configs(struct config *configs) {
-  log_configs = *configs;
+int log_init(struct user_data_log *userdata) {
+  int err;
+
+  log_stream = fopen(userdata->configs->shandler_log, "w");
+  if(log_stream == NULL) {
+     return -1;
+  }
+  setvbuf(log_stream, NULL, _IONBF, 0);
+
+  if((err = lstack_init(&log_stack, 10 + 4)) != 0) {
+    errno = err;
+    return -1;
+  }
+
+  pthread_mutex_lock(&mxq);
+  if(pthread_create(&log_thread, NULL, log_func, userdata)) {
+    return -1;
+  }
+
+  return 0;
 }
 
-void log_set_stream(FILE *stream) {
-  out_stream = stream;
+void log_exit() {
+  pthread_mutex_unlock(&mxq);
+  pthread_join(log_thread, NULL);
+  lstack_free(&log_stack);
+  fclose(log_stream);
 }
 
-void log_set_level(int level) {
-  log_level = level;
-}
+void *log_func(void *param) {
+  int err;
+  struct user_data_log *userdata = param;
+  log_entry* ent = NULL;
 
-int log_get_level(void) {
-  return log_level;
+  connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd);
+
+  while(!need_quit(&mxq)) {
+    // TODO add proper polling system
+    if((ent = lstack_pop(&log_stack)) != NULL) {
+      if(ent->severity >= userdata->log_level) {
+        char buffer[20], lls_buffer[10];
+
+        strftime(buffer, 20, "%F %H:%M:%S", localtime(ent->rawtime));
+        log_level_string(lls_buffer, ent->severity);
+
+        pthread_mutex_lock(&mxs);
+        fprintf(log_stream, "[%s: %s] %s", lls_buffer, buffer, ent->event);
+        pthread_mutex_unlock(&mxs);
+      }
+      if((err = log_to_database(ent)) != 0) {
+        if((err != CR_SERVER_GONE_ERROR && err != -1) ||
+          (err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
+          (err = log_to_database (ent)) != 0) {
+
+          pthread_mutex_lock(&mxs);
+          fprintf(log_stream, "could not log to database (%d)\n", err);
+          pthread_mutex_unlock(&mxs);
+        }
+      }
+      free(ent->rawtime);
+      free(ent);
+    }
+
+    usleep(50000);
+  }
+  return NULL;
 }
 
 void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char *format, const va_list args) {
-  int err;
-  log_entry ent;
+  char buffer[20], lls_buffer[10];
 
-  pthread_mutex_lock(&log_mutex);
-  if(out_stream == NULL) {
-    out_stream = stdout;
+  log_entry *ent = malloc(sizeof(log_entry));
+  if(ent == NULL) {
+    pthread_mutex_lock(&mxs);
+    fprintf(log_stream, "in log_msg: memory allocation failed: (%s)\n", strerror(errno));
+    pthread_mutex_unlock(&mxs);
+
+    goto ON_ERROR;
   }
 
-  memset(&ent, 0, sizeof(log_entry));
+  memset(ent, 0, sizeof(log_entry));
 
-  ent.severity = (signed char) msg_log_level;
-  vsprintf(ent.event, format, args);
-  strcpy(ent.source, source);
-  ent.rawtime = rawtime;
+  ent->severity = msg_log_level;
+  vsprintf(ent->event, format, args);
+  strcpy(ent->source, source);
+  ent->rawtime = rawtime;
 
-  if(msg_log_level >= log_level) {
-    char buffer[20], lls_buffer[10];
+  if(lstack_push(&log_stack, ent) != 0) {
+    pthread_mutex_lock(&mxs);
+    fprintf(log_stream, "in log_msg: enqueue log entry failed\n");
+    pthread_mutex_unlock(&mxs);
 
-    strftime(buffer, 20, "%F %H:%M:%S", localtime(rawtime));
-    log_level_string(lls_buffer, msg_log_level);
-    fprintf(out_stream, "[%s: %s] ", lls_buffer, buffer);
-    vfprintf(out_stream, format, args);
+    goto ON_ERROR;
   }
-  if((err = log_to_database(&ent)) != 0) {
-    if((err != CR_SERVER_GONE_ERROR && err != -1) ||
-      (err = connect_to_database(log_configs.serv_addr, log_configs.username, log_configs.passwd)) != 0 ||
-      (err = log_to_database (&ent)) != 0) {
-      fprintf(out_stream, "could not log to database (%d)\n", err);
-    }
-  }
+
+  return;
+  ON_ERROR:
+  strftime(buffer, 20, "%F %H:%M:%S", localtime(rawtime));
+  log_level_string(lls_buffer, msg_log_level);
+
+  pthread_mutex_lock(&mxs);
+  fprintf(log_stream, "[%s: %s] ", lls_buffer, buffer);
+  vfprintf(log_stream, format, args);
+  pthread_mutex_unlock(&mxs);
+
   free(rawtime);
-  pthread_mutex_unlock(&log_mutex);
 }
 
 void log_msg_level(int msg_log_level, time_t *rawtime, const char *source, const char *format, ...) {
@@ -118,23 +183,21 @@ void log_msg_level(int msg_log_level, time_t *rawtime, const char *source, const
   va_end(args);
 }
 
-/* TODO create function log_msg_db and log_msg */
 void log_debug(const char *format, ...) {
   char buffer[20];
   time_t rawtime;
 
   time(&rawtime);
-  pthread_mutex_lock(&log_mutex);
-  if(out_stream == NULL) {
-    out_stream = stdout;
-  }
   va_list args;
   va_start(args, format);
   strftime(buffer, 20, "%F %H:%M:%S", localtime(&rawtime));
-  fprintf(out_stream, "[DEBUG: %s] ", buffer);
-  vfprintf(out_stream, format, args);
+
+  pthread_mutex_lock(&mxs);
+  fprintf(log_stream, "[DEBUG: %s] ", buffer);
+  vfprintf(log_stream, format, args);
+  pthread_mutex_unlock(&mxs);
+
   va_end(args);
-  pthread_mutex_unlock(&log_mutex);
 }
 
 void log_info(const char *format, ...) {
@@ -175,4 +238,15 @@ void log_fatal(const char *format, ...) {
   time(rawtime);
   log_msg(LOG_LEVEL_FATAL, rawtime, "Serial Handler", format, args);
   va_end(args);
+}
+
+static int need_quit(pthread_mutex_t *mxq) {
+  switch(pthread_mutex_trylock(mxq)) {
+    case 0:
+      pthread_mutex_unlock(mxq);
+      return 1;
+    case EBUSY:
+      return 0;
+  }
+  return 1;
 }
