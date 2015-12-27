@@ -41,10 +41,14 @@ enum {
   LOG_LEVEL_FATAL= 5,
 };
 
+struct user_data_log {
+  int log_level;
+  struct config *configs;
+};
+
 void log_level_string(char *lls_buffer, int msg_log_level);
-void log_set_configs(struct config *configs);
-void log_set_stream(FILE *stream);
-void log_set_level(int level);
+int log_init(struct user_data_log *userdata);
+void log_exit();
 int log_get_level(void);
 void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char *format, va_list args);
 void log_msg_level(int msg_log_level, time_t *rawtime, const char *source, const char *format, ...);

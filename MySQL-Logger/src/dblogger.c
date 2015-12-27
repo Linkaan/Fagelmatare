@@ -35,38 +35,31 @@
 
 static MYSQL *mysql = NULL;
 static MYSQL_STMT *stmt = NULL;
-static pthread_mutex_t log_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int connect_to_database(const char *address, const char *user, const char *pwd) {
   char query[QUERY_BUFFER_SIZE];
 
-  pthread_mutex_lock(&log_mutex);
   if(!mysql) mysql = mysql_init(NULL);
   if(!mysql) {
-    pthread_mutex_unlock(&log_mutex);
     return mysql_errno(mysql);
   }
 
   mysql_options(mysql, MYSQL_OPT_RECONNECT, &(int){ 1 });
   if(!mysql_real_connect(mysql, address, user, pwd, "fagelmatare", 0, NULL, 0)) {
     if(mysql) mysql_close(mysql);
-    pthread_mutex_unlock(&log_mutex);
     return mysql_errno(mysql);
   }
 
   stmt = mysql_stmt_init(mysql);
   if(!stmt) {
-    pthread_mutex_unlock(&log_mutex);
     return CR_OUT_OF_MEMORY;
   }
 
   strcpy(query, "INSERT INTO `logg` (severity,event,source,datetime)"
 						    "VALUES(?,?,?,?)");
   if(mysql_stmt_prepare(stmt, query, strlen(query))) {
-    pthread_mutex_unlock(&log_mutex);
     return mysql_stmt_errno(stmt);
   }
-  pthread_mutex_unlock(&log_mutex);
 
   return 0;
 }
@@ -74,17 +67,15 @@ int connect_to_database(const char *address, const char *user, const char *pwd) 
 int log_to_database(log_entry *ent) {
   MYSQL_TIME ts;
   MYSQL_BIND sbind[4];
+  struct tm *tm_info;
 
   if(!ent) return EFAULT;
 
-  pthread_mutex_lock(&log_mutex);
   if(!mysql || !stmt) {
-    pthread_mutex_unlock(&log_mutex);
     return -1;
   }
 
   if(mysql_ping(mysql)) {
-    pthread_mutex_unlock(&log_mutex);
     return mysql_errno(mysql);
   }
 
@@ -113,19 +104,19 @@ int log_to_database(log_entry *ent) {
 
   mysql_stmt_bind_param(stmt, sbind);
 
-  ts.year  = 1900+ent->tm_info->tm_year;
-  ts.month = 1+ent->tm_info->tm_mon;
-  ts.day   = ent->tm_info->tm_mday;
+  tm_info = localtime(ent->rawtime);
 
-  ts.hour  = ent->tm_info->tm_hour;
-  ts.minute= ent->tm_info->tm_min;
-  ts.second= ent->tm_info->tm_sec;
+  ts.year  = 1900+tm_info->tm_year;
+  ts.month = 1+tm_info->tm_mon;
+  ts.day   = tm_info->tm_mday;
+
+  ts.hour  = tm_info->tm_hour;
+  ts.minute= tm_info->tm_min;
+  ts.second= tm_info->tm_sec;
 
   if(mysql_stmt_execute(stmt)) {
-    pthread_mutex_unlock(&log_mutex);
     return mysql_stmt_errno(stmt);
   }
-  pthread_mutex_unlock(&log_mutex);
 
   return 0;
 }
@@ -133,13 +124,10 @@ int log_to_database(log_entry *ent) {
 int disconnect(void) {
   int err = 0;
 
-  pthread_mutex_lock(&log_mutex);
   if(mysql_stmt_close(stmt)) {
     err = mysql_stmt_errno(stmt);
   }
 
   mysql_close(mysql);
-  pthread_mutex_unlock(&log_mutex);
-
   return err;
 }

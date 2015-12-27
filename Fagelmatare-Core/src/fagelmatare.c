@@ -59,12 +59,6 @@
 #define _log_debug(format, ...) log_debug(format, ##__VA_ARGS__)
 #endif
 
-typedef struct {
-  time_t *rawtime;
-  char source[33];
-  char event[129];
-} log_args;
-
 struct user_data {
   lstack_t *results;
   pthread_mutex_t *mxq;
@@ -100,9 +94,7 @@ int main(void) {
   int err;
   int pipefd[2];
   struct config configs;
-  FILE *log_stream;
   pthread_t timer_thread;
-  pthread_t queue_thread;
   pthread_t ping_thread;
   pthread_t state_thread;
   lstack_t results; /* lstack_t struct used by lstack */
@@ -114,18 +106,15 @@ int main(void) {
     exit(EXIT_FAILURE);
   }
 
-  log_stream = fopen(configs.fagelmatare_log, "w");
-  if(log_stream == NULL) {
-     printf("error opening fagelmatare log file for writing: %s\n", strerror(errno));
-     exit(EXIT_FAILURE);
+  struct user_data_log userdata_log = {
+    .log_level= LOG_LEVEL_WARN,
+    .configs  = &configs,
+  };
+
+  if(log_init(&userdata_log)) {
+    printf("error initalizing log thread: %s\n", strerror(errno));
+    exit(EXIT_FAILURE);
   }
-
-  log_set_level(LOG_LEVEL_WARN);
-  log_set_stream(log_stream);
-  log_set_configs(&configs);
-
-  // Turn off buffering for log_stream
-  setvbuf(log_stream, NULL, _IONBF, 0);
 
   /* init user_data struct used by threads for synchronization */
   struct user_data userdata = {
@@ -137,14 +126,6 @@ int main(void) {
 
   /* initialize wiringpi */
   wiringPiSetup();
-
-  log_warn("TARGET 1 REACHED!");
-
-  /* attempt to connect to database to instantiate dblogger for use */
-  if((err = connect_to_database(configs.serv_addr, configs.username, configs.passwd)) != 0) {
-    //log_warn("could not connect to database (%d)\n", err);
-    log_debug("could not connect to database (%d)\n", err);
-  }
 
   atomic_store(&fd, timerfd_create(CLOCK_REALTIME, 0));
   if(atomic_load(&fd) < 0) {
@@ -171,11 +152,6 @@ int main(void) {
   pthread_mutex_lock(&mxq);
   if(pthread_create(&timer_thread, NULL, timer_func, &userdata)) {
     log_fatal("creating timer thread: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
-  }
-
-  if(pthread_create(&queue_thread, NULL, queue_func, &userdata)) {
-    log_fatal("creating queue thread: %s\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
 
@@ -231,12 +207,9 @@ int main(void) {
   close(pipefd[1]);
   close(atomic_load(&fd));
 
-  fclose(log_stream);
-
   stop_watching_state();
   pthread_join(ping_thread, NULL);
   pthread_join(timer_thread, NULL);
-  pthread_join(queue_thread, NULL);
   pthread_join(state_thread, NULL);
   pthread_mutex_destroy(&mxq);
   lstack_free(&results);
@@ -253,6 +226,7 @@ int main(void) {
     _log_debug("error while disconnecting from database (%d)\n", err);
   }
 
+  log_exit();
   alarm(0);
   exit(EXIT_SUCCESS);
 }
@@ -312,24 +286,6 @@ void *timer_func(void *param) {
   return NULL;
 }
 
-void *queue_func(void *param) {
-  struct user_data *userdata = param;
-  log_args* largs = NULL;
-
-  while(!need_quit(userdata->mxq)) {
-
-    pthread_mutex_lock(&userdata_mutex);
-    if((largs = lstack_pop(userdata->results)) != NULL) {
-      log_msg_level(LOG_LEVEL_INFO, largs->rawtime, largs->source, largs->event);
-      free(largs);
-    }
-    pthread_mutex_unlock(&userdata_mutex);
-
-    usleep(50000);
-  }
-  return NULL;
-}
-
 void *ping_func(void *param) {
   struct user_data *userdata = param;
   int sockfd, rc, len;
@@ -338,7 +294,7 @@ void *ping_func(void *param) {
   struct sockaddr_un addr;
   socklen_t addrlen;
   struct pollfd p[2];
-  time_t rawtime;
+  time_t *rawtime;
 
   memset(&buf, 0, sizeof(buf));
 
@@ -413,32 +369,14 @@ void *ping_func(void *param) {
         memmove(buf, buf+3, len - 3 + 1);
         for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
           if(!strncasecmp("motion", buf, strlen(buf))) {
-            log_args *largs = malloc(sizeof(log_args));
-            if(largs == NULL) {
+            rawtime = malloc(sizeof(time_t));
+            if(rawtime == NULL) {
               log_fatal("in ping_func: memory allocation failed: (%s)\n", strerror(errno));
               // abort() ???
               continue;
             }
-            memset(largs, 0, sizeof(log_args));
-
-            strcpy(largs->source, "ping sensor");
-            strcpy(largs->event, "motion\n");
-
-            rawtime = time(NULL);
-            largs->rawtime = malloc(sizeof(time_t));
-            if(largs->rawtime == NULL) {
-              log_fatal("in ping_func: memory allocation failed: (%s)\n", strerror(errno));
-              // abort() ???
-              continue;
-            }
-            memcpy(largs->rawtime, &rawtime, sizeof(time_t));
-
-            pthread_mutex_lock(&userdata_mutex); // <-- this is redundant
-            if(lstack_push(userdata->results, largs) != 0) {
-              log_fatal("enqueue log entry failed\n");
-              // abort() ???
-            }
-            pthread_mutex_unlock(&userdata_mutex);
+            time(rawtime);
+            log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "motion\n");
           }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
@@ -525,80 +463,39 @@ void reset_timer(void) {
  * callback function for any interrupts received on registered pin
  */
 void interrupt_callback(void *param) {
-  time_t rawtime;
+  time_t *rawtime;
   struct user_data *userdata;
+  int do_log = 1;
 
   userdata = param;
-  rawtime = time(NULL);
-  //memcpy(rawtime, &now, sizeof(time_t))
+  rawtime = malloc(sizeof(time_t));
+  if(rawtime == NULL) {
+    log_fatal("in interrupt_callback: memory allocation failed: (%s)\n", strerror(errno));
+    // abort() ???
+    do_log = 0;
+  }else {
+    time(rawtime);
+  }
 
   // add interrupt event to mysql database
   if(digitalRead(userdata->configs->pir_input) == HIGH) {
     atomic_store(&mpir, (_Bool) 1);
-    /**if(atomic_compare_exchange_weak(&mping, (_Bool[]) { true }, false)) {*/
-      reset_timer();
-      if(atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
-        if(touch(userdata->configs->start_hook)) {
-          log_fatal("could not create start recording hook (%s)\n", strerror(errno));
-          atomic_store(&rec, false);
-        }
+    reset_timer();
+    if(atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
+      if(touch(userdata->configs->start_hook)) {
+        log_fatal("could not create start recording hook (%s)\n", strerror(errno));
+        atomic_store(&rec, false);
       }
-    /**}*/
-    log_args *largs = malloc(sizeof(log_args));
-    if(largs == NULL) {
-      log_fatal("in interrupt_callback: memory allocation failed: (%s)\n", strerror(errno));
-      // abort() ???
-      return;
     }
-    memset(largs, 0, sizeof(log_args));
 
-    strcpy(largs->source, "pir sensor");
-    strcpy(largs->event, "rising\n");
-
-    largs->rawtime = malloc(sizeof(time_t));
-    if(largs->rawtime == NULL) {
-      log_fatal("in interrupt_callback: memory allocation failed: (%s)\n", strerror(errno));
-      // abort() ???
-      return;
-    }
-    memcpy(largs->rawtime, &rawtime, sizeof(time_t));
-
-    pthread_mutex_lock(&userdata_mutex); // <-- this is redundant
-    if(lstack_push(userdata->results, largs) != 0) {
-      log_fatal("enqueue log entry failed\n");
-      // abort() ???
-    }
-    pthread_mutex_unlock(&userdata_mutex);
+    if(do_log) log_msg_level(LOG_LEVEL_INFO, rawtime, "pir sensor", "rising\n");
   }else {
     atomic_store(&mpir, (_Bool) 0);
     if(atomic_compare_exchange_weak(&rec, (_Bool[]) { true }, true)) {
       reset_timer();
     }
-    log_args *largs = malloc(sizeof(log_args));
-    if(largs == NULL) {
-      log_fatal("in interrupt_callback: memory allocation failed: (%s)\n", strerror(errno));
-      // abort() ???
-      return;
-    }
-    memset(largs, 0, sizeof(log_args));
 
-    strcpy(largs->source, "pir sensor");
-    strcpy(largs->event, "falling\n");
-
-    largs->rawtime = malloc(sizeof(time_t));
-    if(largs->rawtime == NULL) {
-      log_fatal("in interrupt_callback: memory allocation failed: (%s)\n", strerror(errno));
-      // abort() ???
-      return;
-    }
-    memcpy(largs->rawtime, &rawtime, sizeof(time_t));
-
-    pthread_mutex_lock(&userdata_mutex); // <-- this is redundant
-    if(lstack_push(userdata->results, largs) != 0) {
-      log_fatal("enqueue log entry failed\n");
-      // abort() ???
-    }
-    pthread_mutex_unlock(&userdata_mutex);
+    if(do_log) log_msg_level(LOG_LEVEL_INFO, rawtime, "pir sensor", "falling\n");
   }
 }
 
@@ -608,15 +505,18 @@ int on_file_create(char *filename, char *content) {
   if(strcmp(filename, "record") == 0) {
     _log_debug("recording state changed to: %s\n", content);
     if(strcmp(content, "false") == 0) {
-      atomic_store(&rec, false);
-      clock_gettime(CLOCK_REALTIME, &end);
-      double elapsed = (end.tv_sec-start.tv_sec)*1E9 + end.tv_nsec-start.tv_nsec;
+      if(atomic_compare_exchange_weak(&rec, (_Bool[]) { true }, false)) {
+        clock_gettime(CLOCK_REALTIME, &end);
+        double elapsed = (end.tv_sec-start.tv_sec)*1E9 + end.tv_nsec-start.tv_nsec;
 
-      _log_debug("recorded video of length %lf seconds\n", elapsed/1E9);
+        _log_debug("recorded video of length %lf seconds\n", elapsed/1E9);
+      }
     }else {
-      _log_debug("started recording\n");
+      if(atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
+        _log_debug("started recording\n");
 
-      clock_gettime(CLOCK_REALTIME, &start);
+        clock_gettime(CLOCK_REALTIME, &start);
+      }
     }
     return 1;
   }else {

@@ -90,7 +90,7 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
   ent.severity = (signed char) msg_log_level;
   vsprintf(ent.event, format, args);
   strcpy(ent.source, source);
-  ent.tm_info = localtime(rawtime);
+  ent.rawtime = rawtime;
 
   if(msg_log_level >= log_level) {
     char buffer[20], lls_buffer[10];

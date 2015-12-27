@@ -33,7 +33,7 @@ typedef struct {
     signed char severity;
     char event[129];
     char source[33];
-    struct tm *tm_info;
+    time_t *rawtime;
 } log_entry;
 
 #endif
