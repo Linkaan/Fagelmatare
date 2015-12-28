@@ -543,7 +543,7 @@ int touch(const char *file) {
 
   if(stat(file, &info) < 0) {
     if(fd < 0) {
-      log_warn("stat failed on file \"%s\": %s", file, strerror(errno));
+      log_warn("stat failed on file \"%s\": %s\n", file, strerror(errno));
       if(open_errno) {
         errno = open_errno;
       }
