@@ -133,12 +133,6 @@ int main(void) {
       if((rc = recv(fd, buf, sizeof(buf), 0)) > 0) {
         char *end;
 
-        if(!strncmp("-1", buf, 2)) { // TODO change protocol to add prefix temp=
-          out_temperature = -1;
-          fprintf(stderr, "SerialHandler returned negative one, resending request...\n");
-          close(fd);
-          continue;
-        }
         out_temperature = (int) strtol(buf, &end, 10);
         if (*end || errno == ERANGE) {
           out_temperature = -1;

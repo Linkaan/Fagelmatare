@@ -265,7 +265,6 @@ void send_serial(char *msg, const int sock, struct user_data *userdata) {
   pthread_mutex_lock(userdata->serial_mutex);
   while(*msg) serialPutchar(*(userdata->sfd), *msg++);
   serialPutchar(*(userdata->sfd), '\0');
-  //serialPuts(*(userdata->sfd), msg);
   _log_debug("sent request over serial bus.\n");
   if(!sock){
     pthread_mutex_unlock(userdata->serial_mutex);
@@ -274,7 +273,7 @@ void send_serial(char *msg, const int sock, struct user_data *userdata) {
   while(1) {
     _log_debug("attempting to read answer...\n");
     if((str = read_string_until(*(userdata->sfd), '\0', 64)) == NULL || str[0] == '\0') {
-      str = strdup("-1");
+      str = strdup("NaN");
       break;
     }else {
       if(!strncasecmp("/E/", str, 3)) {
