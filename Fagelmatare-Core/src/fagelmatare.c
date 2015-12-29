@@ -326,7 +326,7 @@ void *ping_func(void *param) {
     return NULL;
   }
 
-  len = asprintf(&msg, "/S/motion|start_record|stop_record");
+  len = asprintf(&msg, "/S/motion");
   if(len < 0) {
     log_error("asprintf error: %s\n", strerror(errno));
     close(sockfd);
@@ -400,23 +400,6 @@ void *ping_func(void *param) {
             }
             free(msg);
             is_ultrasonic_enabled = 1;
-          }else if(!strncasecmp("start_record", buf, strlen(buf))) {
-            _log_debug("caught event start_record\n");
-            reset_timer();
-            if(atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
-              if(touch(userdata->configs->start_hook)) {
-                log_fatal("could not create start recording hook (%s)\n", strerror(errno));
-                atomic_store(&rec, false);
-              }
-            }
-          }else if(!strncasecmp("stop_record", buf, strlen(buf))) {
-            _log_debug("caught event stop_record\n");
-            if(atomic_load(&rec)) {
-              if(touch(userdata->configs->stop_hook)) {
-                log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
-                atomic_store(&rec, true);
-              }
-            }
           }else {
             log_error("read string violating protocol (%s)\n", buf);
           }
@@ -431,7 +414,7 @@ void *ping_func(void *param) {
         break;
       }else if(rc == 0) {
         is_ultrasonic_enabled = 0;
-        log_warn("the subscription of events \"motion|start_record|stop_record\" was reset by peer.\n");
+        log_warn("the subscription of event \"motion\" was reset by peer.\n");
         close(sockfd);
         sleep(5);
         goto ConnectToPeer;
