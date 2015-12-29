@@ -45,6 +45,7 @@
 
 typedef struct watch_target {
   char *dir;
+  char *fname;
   int (*callback)(char *, char *);
   int read_content;
 } watch_target;
@@ -58,42 +59,91 @@ void *watch_for_file_creation(watch_target *target) {
   int wd;
   int status;
   int dir_strlen;
+  int statedir_strlen;
   char buffer[EVENT_BUF_LEN];
+  char *statedir;
   char *dir = target->dir;
   int (*callback)(char *, char *) = target->callback;
   int read_content = target->read_content;
   free(target);
   dir_strlen = strlen(dir);
 
-  //struct sigaction term_handler = {.sa_handler = sig_handler};
-  //sigaction(SIGTERM, &term_handler, NULL);
+  printf("TARGET 4 REACHED\n");
 
   fd = inotify_init();
   if (fd < 0) {
     perror("inotify_init error");
-    exit(EXIT_FAILURE);
+    exit(1);
+  }
+
+  int err = asprintf(&statedir, "%s/%s", dir, target->fname);
+  if(err < 0) {
+    perror("asprintf failed");
+    exit(1);
+  }else {
+    statedir_strlen = err;
   }
 
   struct stat st;
-  int err = stat(dir, &st);
+  err = stat(statedir, &st);
   if (err == -1) {
     if (errno == ENOENT) {
-      fprintf(stderr, "Error: %s directory does not exist\n", dir);
+      printf("%s does not exist!", statedir);
+      status = 1;
     } else {
       perror("stat error");
+      exit(1);
     }
-    exit(EXIT_FAILURE);
   } else {
     if (!S_ISDIR(st.st_mode)) {
       fprintf(stderr, "Error: %s is not a directory\n", dir);
-      exit(EXIT_FAILURE);
+      exit(1);
     }
+    status = 0;
   }
 
-  if (access(dir, R_OK) != 0) {
-    perror("Can't access hook target directory");
-    exit(EXIT_FAILURE);
+  printf("TARGET 5 REACHED (%s)\n", statedir);
+
+  if(status) {
+    uint32_t inotify_mask = IN_CREATE;
+    wd = inotify_add_watch(fd, dir, inotify_mask);
+    status = 0;
+    printf("TARGET 6 REACHED\n");
+    while (keep_watching && !status) {
+      length = read(fd, buffer, EVENT_BUF_LEN);
+      if (length < 0) {
+        break;
+      }
+
+      i = 0;
+      while (i < length) {
+        struct inotify_event *event = ( struct inotify_event * ) &buffer[ i ];
+        if (event->len) {
+          if (event->mask & inotify_mask) {
+            if ((event->mask & IN_ISDIR)) { // dir
+              int path_len = dir_strlen + strlen(event->name) + 2;
+              char *path = malloc(path_len);
+              if (path == NULL) {
+                perror("malloc for file path failed");
+              } else {
+                snprintf(path, path_len, "%s/%s", dir, event->name);
+                if(!strcmp(statedir, path)) {
+                  free(path);
+                  status = 1;
+                  break;
+                }
+                free(path);
+              }
+            }
+          }
+        }
+        i += EVENT_SIZE + event->len;
+      }
+    }
+    inotify_rm_watch(fd, wd);
   }
+
+  printf("TARGET 7 REACHED\n");
 
   uint32_t inotify_mask;
   if (read_content) {
@@ -102,13 +152,17 @@ void *watch_for_file_creation(watch_target *target) {
     inotify_mask = IN_CREATE;
   }
 
-  wd = inotify_add_watch(fd, dir, inotify_mask);
+  wd = inotify_add_watch(fd, statedir, inotify_mask);
 
   while (keep_watching) {
+    printf("TARGET 8 REACHED (%d) (%d)\n", fd, sizeof(buffer));
+
     length = read(fd, buffer, EVENT_BUF_LEN);
     if (length < 0) {
       break;
     }
+
+    printf("TARGET 9 REACHED\n");
 
     i = 0;
     status = 0;
@@ -117,12 +171,12 @@ void *watch_for_file_creation(watch_target *target) {
       if (event->len) {
         if (event->mask & inotify_mask) {
           if (!(event->mask & IN_ISDIR)) { // file
-            int path_len = dir_strlen + strlen(event->name) + 2;
+            int path_len = statedir_strlen + strlen(event->name) + 2;
             char *path = malloc(path_len);
             if (path == NULL) {
               perror("malloc for file path failed");
             } else {
-              snprintf(path, path_len, "%s/%s", dir, event->name);
+              snprintf(path, path_len, "%s/%s", statedir, event->name);
 
               if (read_content) {
                 // Read file contents
@@ -167,9 +221,10 @@ void *watch_for_file_creation(watch_target *target) {
   pthread_exit(0);
 }
 
-void start_watching_state(pthread_t *thread, char *dir, int (*callback)(char *, char *), int read_content) {
+void start_watching_state(pthread_t *thread, char *dir, char *fname, int (*callback)(char *, char *), int read_content) {
   watch_target *target = malloc(sizeof(watch_target));
   target->dir = dir;
+  target->fname = fname;
   target->callback = callback;
   target->read_content = read_content;
   pthread_create(thread, NULL, (void * (*)(void *))watch_for_file_creation, target);

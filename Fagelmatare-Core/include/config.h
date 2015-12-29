@@ -34,7 +34,7 @@ struct config {
  char *passwd;
  char *fagelmatare_log;
  char *sock_path;
- char *state_path;
+ char *state_dir;
  char *start_hook;
  char *stop_hook;
  int pir_input;

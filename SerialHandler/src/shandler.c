@@ -97,7 +97,7 @@ int main(void) {
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
     printf("could not parse configuration file: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   struct user_data_log userdata_log = {
@@ -107,40 +107,40 @@ int main(void) {
 
   if(log_init(&userdata_log)) {
     printf("error initalizing log thread: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if((sfd = serialOpen("/dev/ttyAMA0", 9600)) < 0) {
     log_fatal("open serial device failed: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if(pipe(pipefd) < 0) {
     log_fatal("pipe error: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if((err = lstack_init(&results, 10 + 2)) != 0) {
     log_fatal("could not initialize lstack (%d)\n", err);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if((sock = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
     log_fatal("socket error: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
     log_fatal("setsockopt(SO_REUSEADDR) failed: %s\n", strerror(errno));
     close(sock);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   flags = fcntl(sock, F_GETFL, 0);
   if((fcntl(sock, F_SETFL, flags | O_NONBLOCK)) < 0) {
     log_fatal("fnctl failed: %s\n", strerror(errno));
     close(sock);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   memset(&addr, 0, sizeof(addr));
@@ -153,23 +153,23 @@ int main(void) {
   if(bind(sock, (struct sockaddr *) &addr, addrlen) < 0) {
     log_fatal("bind error: %s\n", strerror(errno));
     close(sock);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if(listen(sock, 5) < 0) {
     log_fatal("listen error: %s\n", strerror(errno));
     close(sock);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if(ehandler_init(5) < 0) {
     log_fatal("ehandler initialization error: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if(ehandler_insert("motion") == NULL) {
     log_fatal("ehandler_insert error: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   struct user_data userdata = {
@@ -190,12 +190,12 @@ int main(void) {
   if(pthread_create(&network_thread, NULL, network_func, &userdata)) {
     log_fatal("creating network thread: %s\n", strerror(errno));
     close(sock);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
   if(pthread_create(&serial_thread, NULL, listen_serial, &userdata)) {
     log_fatal("creating serial thread: %s\n", strerror(errno));
     close(sock);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   sem_init(&sem, 0, 0);
@@ -521,5 +521,5 @@ void die(int sig) {
 
 void quit(int sig) {
   log_fatal("unclean exit, from signal %d (%s).\n", sig, strsignal(sig));
-  exit(EXIT_FAILURE);
+  exit(1);
 }

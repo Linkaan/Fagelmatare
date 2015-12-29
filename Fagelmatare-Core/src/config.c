@@ -55,7 +55,7 @@ int get_config(char *filename, struct config *configuration) {
         }else if(!strcmp(pch, "fagelmatare_log_file") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->fagelmatare_log = strdup(pch);
         }else if(!strcmp(pch, "state_path") && (pch = strtok(NULL, DELIM)) != NULL) {
-          configuration->state_path = strdup(pch);
+          configuration->state_dir = strdup(pch);
         }else if(!strcmp(pch, "start_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->start_hook = strdup(pch);
         }else if(!strcmp(pch, "stop_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
@@ -81,14 +81,14 @@ void free_config(struct config *configuration) {
   free(configuration->username);
   free(configuration->passwd);
   free(configuration->sock_path);
-  free(configuration->state_path);
+  free(configuration->state_dir);
   free(configuration->start_hook);
   free(configuration->stop_hook);
   configuration->serv_addr = NULL;
   configuration->username = NULL;
   configuration->passwd = NULL;
   configuration->sock_path = NULL;
-  configuration->state_path = NULL;
+  configuration->state_dir = NULL;
   configuration->start_hook = NULL;
   configuration->stop_hook = NULL;
 }

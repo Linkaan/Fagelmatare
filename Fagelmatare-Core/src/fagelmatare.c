@@ -100,10 +100,13 @@ int main(void) {
   lstack_t results; /* lstack_t struct used by lstack */
   pthread_mutex_t mxq; /* mutex used as quit flag */
 
+  setvbuf(stdout, NULL, _IONBF, 0);
+  printf("TARGET 1 REACHED\n");
+
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
     printf("could not parse configuration file: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   struct user_data_log userdata_log = {
@@ -113,7 +116,7 @@ int main(void) {
 
   if(log_init(&userdata_log)) {
     printf("error initalizing log thread: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   /* init user_data struct used by threads for synchronization */
@@ -130,19 +133,21 @@ int main(void) {
   atomic_store(&fd, timerfd_create(CLOCK_REALTIME, 0));
   if(atomic_load(&fd) < 0) {
     log_fatal("timerfd_create failed: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if(pipe(pipefd) < 0) {
     log_fatal("pipe error: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   /* init lock-free stack used by threads for synchronization */
   if((err = lstack_init(&results, 10 + 2)) != 0) {
     log_fatal("could not initialize lstack (%d)\n", err);
-    exit(EXIT_FAILURE);
+    exit(1);
   }
+
+  printf("TARGET 2 REACHED\n");
 
   /* init and lock the mutex before creating the threads.  As long as the
   mutex stays locked, the threads should keep running.  A pointer to the
@@ -152,21 +157,21 @@ int main(void) {
   pthread_mutex_lock(&mxq);
   if(pthread_create(&timer_thread, NULL, timer_func, &userdata)) {
     log_fatal("creating timer thread: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   if(pthread_create(&ping_thread, NULL, ping_func, &userdata)) {
     log_fatal("creating ping thread: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
-  start_watching_state(&state_thread, configs.state_path, on_file_create, 1);
+  start_watching_state(&state_thread, configs.state_dir, "state", on_file_create, 1);
 
   /* register a callback function (interrupt_callback) on wiringpi when a
   iterrupt is received on the pir sensor gpio pin. */
   if(wiringPiISR(configs.pir_input, INT_EDGE_BOTH, &interrupt_callback, &userdata) < 0) {
     log_fatal("error in wiringPiISR: %s\n", strerror(errno));
-    exit(EXIT_FAILURE);
+    exit(1);
   }
 
   // initialize a semaphore and register signal handlers
@@ -206,6 +211,8 @@ int main(void) {
   write(pipefd[1], NULL, 8);
   close(pipefd[1]);
   close(atomic_load(&fd));
+
+  printf("TARGET 3 REACHED\n");
 
   stop_watching_state();
   pthread_join(ping_thread, NULL);
