@@ -100,9 +100,6 @@ int main(void) {
   lstack_t results; /* lstack_t struct used by lstack */
   pthread_mutex_t mxq; /* mutex used as quit flag */
 
-  setvbuf(stdout, NULL, _IONBF, 0);
-  printf("TARGET 1 REACHED\n");
-
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
     printf("could not parse configuration file: %s\n", strerror(errno));
@@ -147,8 +144,6 @@ int main(void) {
     exit(1);
   }
 
-  printf("TARGET 2 REACHED\n");
-
   /* init and lock the mutex before creating the threads.  As long as the
   mutex stays locked, the threads should keep running.  A pointer to the
   userdata struct containing the mutex is passed as the argument to the thread
@@ -165,7 +160,7 @@ int main(void) {
     exit(1);
   }
 
-  start_watching_state(&state_thread, configs.state_dir, "state", on_file_create, 1);
+  start_watching_state(&state_thread, configs.state_path, on_file_create, 1);
 
   /* register a callback function (interrupt_callback) on wiringpi when a
   iterrupt is received on the pir sensor gpio pin. */
@@ -211,8 +206,6 @@ int main(void) {
   write(pipefd[1], NULL, 8);
   close(pipefd[1]);
   close(atomic_load(&fd));
-
-  printf("TARGET 3 REACHED\n");
 
   stop_watching_state();
   pthread_join(ping_thread, NULL);
