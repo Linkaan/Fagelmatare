@@ -74,6 +74,7 @@ static atomic_bool mpir = ATOMIC_VAR_INIT(false);
 static atomic_bool rec = ATOMIC_VAR_INIT(false);
 
 static int is_ultrasonic_enabled;
+static int is_atexit_enabled;
 
 void interrupt_callback	(void *param);
 
@@ -88,7 +89,8 @@ int fdutimensat     (int fd, int dir, char const *file, struct timespec const ts
 int on_file_create  (char *filename, char *content);
 
 void die		        (int sig);
-void quit  (int sig);
+void quit           (int sig);
+void cleanup        ();
 
 int main(void) {
   int err;
@@ -195,6 +197,9 @@ int main(void) {
   signal(SIGTSTP, die);
   signal(SIGTTIN, die);
   signal(SIGTTOU, die);
+
+  is_atexit_enabled = 1;
+  atexit(cleanup);
 
   // block this thread until process is interrupted
   sem_wait(&sem);
@@ -594,13 +599,19 @@ void die(int sig) {
   sigaction(SIGTTIN, &act, NULL);
   sigaction(SIGTTOU, &act, NULL);
 
+  is_atexit_enabled = 0;
   if(sig != SIGINT && sig != SIGTERM)
     log_fatal("received signal %d (%s), exiting.\n", sig, strsignal(sig));
-  sem_post(&sem);
-  alarm(5);
+  cleanup();
 }
 
 void quit(int sig) {
   log_fatal("unclean exit, from signal %d (%s).\n", sig, strsignal(sig));
+  is_atexit_enabled = 0;
   exit(1);
+}
+
+void cleanup() {
+  sem_post(&sem);
+  alarm(5);
 }

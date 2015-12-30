@@ -133,6 +133,31 @@ void *log_func(void *param) {
 
     usleep(50000);
   }
+
+  while((ent = lstack_pop(&log_stack)) != NULL) {
+    if(ent->severity >= userdata->log_level) {
+      char buffer[20], lls_buffer[10];
+
+      strftime(buffer, 20, "%F %H:%M:%S", localtime(ent->rawtime));
+      log_level_string(lls_buffer, ent->severity);
+
+      pthread_mutex_lock(&mxs);
+      fprintf(log_stream, "[%s: %s] %s", lls_buffer, buffer, ent->event);
+      pthread_mutex_unlock(&mxs);
+    }
+    if((err = log_to_database(ent)) != 0) {
+      if((err != CR_SERVER_GONE_ERROR && err != -1) ||
+        (err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
+        (err = log_to_database (ent)) != 0) {
+
+        pthread_mutex_lock(&mxs);
+        fprintf(log_stream, "could not log to database (%d)\n", err);
+        pthread_mutex_unlock(&mxs);
+      }
+    }
+    free(ent->rawtime);
+    free(ent);
+  }
   return NULL;
 }
 
