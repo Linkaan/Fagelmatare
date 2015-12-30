@@ -496,18 +496,26 @@ int on_file_create(char *filename, char *content) {
   if(strcmp(filename, "record") == 0) {
     _log_debug("recording state changed to: %s\n", content);
     if(strcmp(content, "false") == 0) {
+#ifndef DEBUG
+      atomic_store(&rec, false);
+#else
       if(atomic_compare_exchange_weak(&rec, (_Bool[]) { true }, false)) {
         clock_gettime(CLOCK_REALTIME, &end);
         double elapsed = (end.tv_sec-start.tv_sec)*1E9 + end.tv_nsec-start.tv_nsec;
 
-        _log_debug("recorded video of length %lf seconds\n", elapsed/1E9);
+        log_debug("recorded video of length %lf seconds\n", elapsed/1E9);
       }
+#endif
     }else {
+#ifndef DEBUG
+      atomic_store(&rec, true);
+#else
       if(atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
-        _log_debug("started recording\n");
+        log_debug("started recording\n");
 
         clock_gettime(CLOCK_REALTIME, &start);
       }
+#endif
     }
     return 1;
   }else {
