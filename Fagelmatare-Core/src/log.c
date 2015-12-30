@@ -158,6 +158,10 @@ void *log_func(void *param) {
     free(ent->rawtime);
     free(ent);
   }
+
+  if((err = disconnect()) != 0) {
+    fprintf(log_stream, "error while disconnecting from database (%d)\n", err);
+  }
   return NULL;
 }
 

@@ -67,7 +67,8 @@ struct user_data {
 };
 static pthread_mutex_t userdata_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static sem_t sem;
+static sem_t wakeup_main;
+static sem_t cleanup_done;
 static atomic_int fd 	= ATOMIC_VAR_INIT(0);
 //static atomic_bool mping = ATOMIC_VAR_INIT(false);
 static atomic_bool mpir = ATOMIC_VAR_INIT(false);
@@ -167,8 +168,6 @@ int main(void) {
     exit(1);
   }
 
-  start_watching_state(&state_thread, configs.state_path, on_file_create, 1);
-
   /* register a callback function (interrupt_callback) on wiringpi when a
   iterrupt is received on the pir sensor gpio pin. */
   if(wiringPiISR(configs.pir_input, INT_EDGE_BOTH, &interrupt_callback, &userdata) < 0) {
@@ -178,7 +177,8 @@ int main(void) {
   }
 
   // initialize a semaphore and register signal handlers
-  sem_init(&sem, 0, 0);
+  sem_init(&wakeup_main, 0, 0);
+  sem_init(&cleanup_done, 0, 0);
   signal(SIGALRM, quit);
   signal(SIGHUP, die);
   signal(SIGINT, die);
@@ -207,9 +207,10 @@ int main(void) {
   is_atexit_enabled = 1;
   atexit(cleanup);
 
+  start_watching_state(&state_thread, configs.state_path, on_file_create, 1);
+
   // block this thread until process is interrupted
-  sem_wait(&sem);
-  sem_destroy(&sem);
+  sem_wait(&wakeup_main);
 
   /* unlock mxq to tell the threads to terminate, then join the threads */
   pthread_mutex_unlock(&mxq);
@@ -221,7 +222,6 @@ int main(void) {
   stop_watching_state();
   pthread_join(ping_thread, NULL);
   pthread_join(timer_thread, NULL);
-  pthread_join(state_thread, NULL);
   pthread_mutex_destroy(&mxq);
   lstack_free(&results);
 
@@ -232,15 +232,11 @@ int main(void) {
     }
   }
 
-  if((err = disconnect()) != 0) {
-    _log_debug("error while disconnecting from database (%d)\n", err);
-  }
-
   log_exit();
   free_config(&configs);
   alarm(0);
 
-  exit(EXIT_SUCCESS);
+  sem_post(&cleanup_done);
 }
 
 /* Returns 1 (true) if the mutex is unlocked, which is the
@@ -612,12 +608,15 @@ void die(int sig) {
 }
 
 void quit(int sig) {
-  log_fatal("unclean exit, from signal %d (%s).\n", sig, strsignal(sig));
+  printf("unclean exit, from signal %d (%s).\n", sig, strsignal(sig));
   is_atexit_enabled = 0;
   exit(1);
 }
 
 void cleanup() {
-  sem_post(&sem);
+  sem_post(&wakeup_main);
   alarm(5);
+  sem_wait(&cleanup_done);
+  sem_destroy(&wakeup_main);
+  sem_destroy(&cleanup_done);
 }
