@@ -61,7 +61,7 @@ typedef struct {
 struct user_data {
   lstack_t *results;
   pthread_mutex_t *mxq;
-  pthread_mutex_t *serial_mutex;
+  pthread_mutex_t *mxs;
   int *sfd;
   int *pipefd;
   int *sock;
@@ -70,16 +70,22 @@ struct user_data {
   socklen_t *addrlen;
 };
 
-static sem_t sem;
+static int is_atexit_enabled;
+static sem_t wakeup_main;
+static sem_t cleanup_done;
 
-void send_serial(char *, const int, struct user_data *);
+void send_serial    (char *, const int, struct user_data *);
+void *listen_serial (void *);
+void *network_func  (void *);
+
 char *read_string_until(int, char, int);
-void *listen_serial(void *);
-void *network_func(void *);
-void die(int);
-void quit(int);
-int sem_posted(sem_t *);
+
+int sem_posted      (sem_t *);
 static int need_quit(pthread_mutex_t *);
+
+void die            (int);
+void quit           (int);
+void cleanup        ();
 
 int main(void) {
   int sock, flags;
@@ -92,11 +98,12 @@ int main(void) {
   serial_args* sargs;
   lstack_t results;
   pthread_t network_thread, serial_thread;
-  pthread_mutex_t mxq, serial_mutex;
+  pthread_mutex_t mxq, mxs;
 
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
     printf("could not parse configuration file: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
@@ -107,32 +114,38 @@ int main(void) {
 
   if(log_init(&userdata_log)) {
     printf("error initalizing log thread: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
   if((sfd = serialOpen("/dev/ttyAMA0", 9600)) < 0) {
     log_fatal("open serial device failed: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
   if(pipe(pipefd) < 0) {
     log_fatal("pipe error: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
   if((err = lstack_init(&results, 10 + 2)) != 0) {
     log_fatal("could not initialize lstack (%d)\n", err);
+    log_exit();
     exit(1);
   }
 
   if((sock = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
     log_fatal("socket error: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
   if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
     log_fatal("setsockopt(SO_REUSEADDR) failed: %s\n", strerror(errno));
     close(sock);
+    log_exit();
     exit(1);
   }
 
@@ -140,6 +153,7 @@ int main(void) {
   if((fcntl(sock, F_SETFL, flags | O_NONBLOCK)) < 0) {
     log_fatal("fnctl failed: %s\n", strerror(errno));
     close(sock);
+    log_exit();
     exit(1);
   }
 
@@ -153,29 +167,33 @@ int main(void) {
   if(bind(sock, (struct sockaddr *) &addr, addrlen) < 0) {
     log_fatal("bind error: %s\n", strerror(errno));
     close(sock);
+    log_exit();
     exit(1);
   }
 
   if(listen(sock, 5) < 0) {
     log_fatal("listen error: %s\n", strerror(errno));
     close(sock);
+    log_exit();
     exit(1);
   }
 
   if(ehandler_init(5) < 0) {
     log_fatal("ehandler initialization error: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
   if(ehandler_insert("motion") == NULL) {
     log_fatal("ehandler_insert error: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
   struct user_data userdata = {
     .results = &results,
     .mxq = &mxq,
-    .serial_mutex = &serial_mutex,
+    .mxs = &mxs,
     .sfd = &sfd,
     .pipefd = &pipefd[0],
     .sock = &sock,
@@ -185,20 +203,23 @@ int main(void) {
   };
 
   pthread_mutex_init(&mxq,NULL);
-  pthread_mutex_init(&serial_mutex, NULL);
+  pthread_mutex_init(&mxs, NULL);
   pthread_mutex_lock(&mxq);
   if(pthread_create(&network_thread, NULL, network_func, &userdata)) {
     log_fatal("creating network thread: %s\n", strerror(errno));
     close(sock);
+    log_exit();
     exit(1);
   }
   if(pthread_create(&serial_thread, NULL, listen_serial, &userdata)) {
     log_fatal("creating serial thread: %s\n", strerror(errno));
     close(sock);
+    log_exit();
     exit(1);
   }
 
-  sem_init(&sem, 0, 0);
+  sem_init(&wakeup_main, 0, 0);
+  sem_init(&cleanup_done, 0, 0);
   signal(SIGALRM, quit);
   signal(SIGHUP, die);
   signal(SIGINT, die);
@@ -225,7 +246,7 @@ int main(void) {
   signal(SIGTTOU, die);
 
   sargs = NULL;
-  while(!sem_posted(&sem)) {
+  while(!sem_posted(&wakeup_main)) {
     if((sargs = lstack_pop(&results)) != NULL) {
       if(*sargs->msg == '\0') continue;
       send_serial(sargs->msg, sargs->sock, &userdata);
@@ -233,7 +254,6 @@ int main(void) {
     }
     usleep(50000);
   }
-  sem_destroy(&sem); /* destroy semaphore */
 
   pthread_mutex_unlock(&mxq);
 
@@ -243,31 +263,27 @@ int main(void) {
   pthread_join(network_thread,NULL);
   pthread_join(serial_thread, NULL);
   pthread_mutex_destroy(&mxq);
-  pthread_mutex_destroy(&serial_mutex);
+  pthread_mutex_destroy(&mxs);
   lstack_free(&results);
   ehandler_cleanup();
-
-  if((err = disconnect()) != 0) {
-    _log_debug("error while disconnecting from database (%d)\n", err);
-  }
 
   log_exit();
   free_config(&configs);
   alarm(0);
 
-  exit(EXIT_SUCCESS);
+  sem_post(&cleanup_done);
 }
 
 void send_serial(char *msg, const int sock, struct user_data *userdata) {
   int rc, len;
   char *str;
   _log_debug("now processing %s, %s wait for answer.\n", msg, !sock ? "will not" : "will");
-  pthread_mutex_lock(userdata->serial_mutex);
+  pthread_mutex_lock(userdata->mxs);
   while(*msg) serialPutchar(*(userdata->sfd), *msg++);
   serialPutchar(*(userdata->sfd), '\0');
   _log_debug("sent request over serial bus.\n");
   if(!sock){
-    pthread_mutex_unlock(userdata->serial_mutex);
+    pthread_mutex_unlock(userdata->mxs);
     return;
   }
   while(1) {
@@ -295,7 +311,7 @@ void send_serial(char *msg, const int sock, struct user_data *userdata) {
       }
     }
   }
-  pthread_mutex_unlock(userdata->serial_mutex);
+  pthread_mutex_unlock(userdata->mxs);
   _log_debug("now done processing %s, answer was %s.\n", msg, str);
   len = strlen(str);
   if((rc = send(sock, str, len, MSG_NOSIGNAL)) != len) {
@@ -364,15 +380,15 @@ void *listen_serial(void *param) {
   char *str;
 
   while(!need_quit(userdata->mxq)) {
-    pthread_mutex_lock(userdata->serial_mutex);
+    pthread_mutex_lock(userdata->mxs);
     if(!serialDataAvail(*(userdata->sfd))) {
-      pthread_mutex_unlock(userdata->serial_mutex);
+      pthread_mutex_unlock(userdata->mxs);
       usleep(50000);
       continue;
     }
 
     str = read_string_until(*(userdata->sfd), '\0', 64);
-    pthread_mutex_unlock(userdata->serial_mutex);
+    pthread_mutex_unlock(userdata->mxs);
     if(str == NULL || str[0] == '\0') {
       str = strdup("-1");
     }else {
@@ -512,13 +528,22 @@ void die(int sig) {
   sigaction(SIGTTIN, &act, NULL);
   sigaction(SIGTTOU, &act, NULL);
 
+  is_atexit_enabled = 0;
   if(sig != SIGINT && sig != SIGTERM)
     log_fatal("received signal %d (%s), exiting.\n", sig, strsignal(sig));
-  sem_post(&sem);
-  alarm(5);
+  cleanup();
 }
 
 void quit(int sig) {
-  log_fatal("unclean exit, from signal %d (%s).\n", sig, strsignal(sig));
+  printf("unclean exit, from signal %d (%s).\n", sig, strsignal(sig));
+  is_atexit_enabled = 0;
   exit(1);
+}
+
+void cleanup() {
+  sem_post(&wakeup_main);
+  alarm(5);
+  sem_wait(&cleanup_done);
+  sem_destroy(&wakeup_main);
+  sem_destroy(&cleanup_done);
 }
