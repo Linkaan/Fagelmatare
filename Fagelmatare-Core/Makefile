@@ -42,7 +42,7 @@ lstack.o: $(SRCDIR)/lstack.c
 	$(CC) $(CFLAGS) -c -o $@ $^
 
 state.o: $(SRCDIR)/state.c
-	$(CC) $(CFLAGS) -c -o $@ $^
+	$(CC) $(CFLAGS) `mysql_config --include` -c -o $@ $^
 
 config.o: $(SRCDIR)/config.c
 	$(CC) $(CFLAGS) -c -o $@ $^
