@@ -132,17 +132,20 @@ int main(void) {
   atomic_store(&fd, timerfd_create(CLOCK_REALTIME, 0));
   if(atomic_load(&fd) < 0) {
     log_fatal("timerfd_create failed: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
   if(pipe(pipefd) < 0) {
     log_fatal("pipe error: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
   /* init lock-free stack used by threads for synchronization */
   if((err = lstack_init(&results, 10 + 2)) != 0) {
     log_fatal("could not initialize lstack (%d)\n", err);
+    log_exit();
     exit(1);
   }
 
@@ -154,11 +157,13 @@ int main(void) {
   pthread_mutex_lock(&mxq);
   if(pthread_create(&timer_thread, NULL, timer_func, &userdata)) {
     log_fatal("creating timer thread: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
   if(pthread_create(&ping_thread, NULL, ping_func, &userdata)) {
     log_fatal("creating ping thread: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 
@@ -168,6 +173,7 @@ int main(void) {
   iterrupt is received on the pir sensor gpio pin. */
   if(wiringPiISR(configs.pir_input, INT_EDGE_BOTH, &interrupt_callback, &userdata) < 0) {
     log_fatal("error in wiringPiISR: %s\n", strerror(errno));
+    log_exit();
     exit(1);
   }
 

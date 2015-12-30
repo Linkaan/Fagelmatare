@@ -77,7 +77,7 @@ int log_init(struct user_data_log *userdata) {
   }
   setvbuf(log_stream, NULL, _IONBF, 0);
 
-  if((err = lstack_init(&log_stack, 10 + 4)) != 0) {
+  if((err = lstack_init(&log_stack, 10 + 5)) != 0) {
     errno = err;
     return -1;
   }

@@ -35,6 +35,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include <dirent.h>
+#include <log.h>
 #include <state.h>
 
 #define NUM_EVENT_BUF 10
@@ -67,7 +68,7 @@ void *watch_for_file_creation(watch_target *target) {
 
   fd = inotify_init();
   if (fd < 0) {
-    perror("inotify_init error");
+    log_fatal("inotify_init failed (%s)\n", strerror(errno));
     exit(1);
   }
 
@@ -75,20 +76,20 @@ void *watch_for_file_creation(watch_target *target) {
   int err = stat(dir, &st);
   if (err == -1) {
     if (errno == ENOENT) {
-      fprintf(stderr, "Error: %s directory does not exist\n", dir);
+      log_fatal("state directory (%s) does not exist\n", dir);
     } else {
-      perror("stat error");
+      log_fatal("stat failed (%s)\n", strerror(errno));
     }
     exit(1);
   } else {
     if (!S_ISDIR(st.st_mode)) {
-      fprintf(stderr, "Error: %s is not a directory\n", dir);
+      log_fatal("state path (%s) is not a directory\n", dir);
       exit(1);
     }
   }
 
   if (access(dir, R_OK) != 0) {
-    perror("Can't access hook target directory");
+    log_fatal("failed to access hook target directory (%s)\n", strerror(errno));
     exit(1);
   }
 
@@ -117,7 +118,7 @@ void *watch_for_file_creation(watch_target *target) {
             int path_len = dir_strlen + strlen(event->name) + 2;
             char *path = malloc(path_len);
             if (path == NULL) {
-              perror("malloc for file path failed");
+              log_error("in watch_for_file_creation: memory allocation for file path failed: (%s)\n", strerror(errno));
             } else {
               snprintf(path, path_len, "%s/%s", dir, event->name);
 
@@ -134,11 +135,11 @@ void *watch_for_file_creation(watch_target *target) {
                     fread(content, 1, content_len, fp);
                     content[content_len] = '\0';
                   } else {
-                    perror("malloc for file content failed");
+                    log_error("in watch_for_file_creation: memory allocation for file content failed: (%s)\n", strerror(errno));
                   }
                   fclose(fp);
                 } else {
-                  perror("fopen failed");
+                  log_error("fopen failed (%s)\n", strerror(errno));
                 }
                 status = callback(event->name, content);
                 free(content);
@@ -148,7 +149,7 @@ void *watch_for_file_creation(watch_target *target) {
 
               // Delete that file
               if (status && unlink(path) != 0) {
-                perror("unlink failed");
+                log_error("unlink failed (%s)\n", strerror(errno));
               }
               free(path);
             }
