@@ -4,4 +4,4 @@
 
 - Code needs refactoring
 - Change serialization protocol to binary.
-- Create function log_msg_db and log_msg in log.c
+- Fix invalid pointer error in log.c
