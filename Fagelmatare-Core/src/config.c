@@ -69,6 +69,8 @@ int get_config(char *filename, struct config *configuration) {
           }
         }
       }
+
+      free(line);
     }
     fclose(stream);
   }
