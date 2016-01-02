@@ -97,6 +97,14 @@ int on_file_create  (char *filename, char *content);
 void die		        (int sig);
 void quit           (int sig);
 void cleanup        ();
+void exit_handler   ();
+
+int sem_posted(sem_t *sem) {
+  int sval = 0;
+  sem_getvalue(sem, &sval);
+  return sval;
+}
+
 
 int main(void) {
   int err;
@@ -215,9 +223,11 @@ int main(void) {
   signal(SIGTTOU, die);
 
   is_atexit_enabled = 1;
-  atexit(cleanup);
+  atexit(exit_handler);
 
   start_watching_state(&state_thread, configs.state_path, on_file_create, 1);
+
+  setvbuf(stdout, NULL, _IONBF, 0);
 
   // block this thread until process is interrupted
   sem_wait(&wakeup_main);
@@ -590,34 +600,6 @@ int fdutimensat(int fd, int dir, char const *file, struct timespec const ts[2], 
 }
 
 void die(int sig) {
-  struct sigaction act;
-  sigfillset(&act.sa_mask);
-  act.sa_handler = SIG_DFL;
-  sigaction(SIGHUP, &act, NULL);
-  sigaction(SIGINT, &act, NULL);
-  sigaction(SIGQUIT, &act, NULL);
-  sigaction(SIGILL, &act, NULL);
-  sigaction(SIGTRAP, &act, NULL);
-  sigaction(SIGABRT, &act, NULL);
-  sigaction(SIGIOT, &act, NULL);
-  sigaction(SIGFPE, &act, NULL);
-  sigaction(SIGKILL, &act, NULL);
-  sigaction(SIGUSR1, &act, NULL);
-  sigaction(SIGSEGV, &act, NULL);
-  sigaction(SIGUSR2, &act, NULL);
-  sigaction(SIGPIPE, &act, NULL);
-  sigaction(SIGTERM, &act, NULL);
-#ifdef SIGSTKFLT
-  sigaction(SIGSTKFLT, &act, NULL);
-#endif
-  sigaction(SIGCHLD, &act, NULL);
-  sigaction(SIGCONT, &act, NULL);
-  sigaction(SIGSTOP, &act, NULL);
-  sigaction(SIGTSTP, &act, NULL);
-  sigaction(SIGTTIN, &act, NULL);
-  sigaction(SIGTTOU, &act, NULL);
-
-  is_atexit_enabled = 0;
   if(sig != SIGINT && sig != SIGTERM)
     log_fatal("received signal %d (%s), exiting.\n", sig, strsignal(sig));
   cleanup();
@@ -629,10 +611,17 @@ void quit(int sig) {
   exit(1);
 }
 
-void cleanup() {
-  sem_post(&wakeup_main);
-  alarm(5);
-  sem_wait(&cleanup_done);
+void exit_handler() {
+  int atexit_enabled = is_atexit_enabled;
+  cleanup();
+  if(atexit_enabled) sem_wait(&cleanup_done);
   sem_destroy(&wakeup_main);
   sem_destroy(&cleanup_done);
+}
+
+void cleanup() {
+  if(!is_atexit_enabled) return;
+  is_atexit_enabled = 0;
+  sem_post(&wakeup_main);
+  alarm(5);
 }
