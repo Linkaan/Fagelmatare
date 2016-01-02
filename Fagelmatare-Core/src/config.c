@@ -82,6 +82,7 @@ void free_config(struct config *configuration) {
   free(configuration->username);
   free(configuration->passwd);
   free(configuration->sock_path);
+  free(configuration->fagelmatare_log);
   free(configuration->state_path);
   free(configuration->start_hook);
   free(configuration->stop_hook);
@@ -89,6 +90,7 @@ void free_config(struct config *configuration) {
   configuration->username = NULL;
   configuration->passwd = NULL;
   configuration->sock_path = NULL;
+  configuration->fagelmatare_log = NULL;
   configuration->state_path = NULL;
   configuration->start_hook = NULL;
   configuration->stop_hook = NULL;
