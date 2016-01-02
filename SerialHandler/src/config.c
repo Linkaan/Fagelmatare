@@ -55,9 +55,8 @@ int get_config(char *filename, struct config *configuration) {
           configuration->shandler_log = strdup(pch);
         }
       }
-
-      free(line);
     }
+    free(line);
     fclose(stream);
   }
 
