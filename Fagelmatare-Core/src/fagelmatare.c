@@ -74,6 +74,11 @@ static atomic_int fd 	= ATOMIC_VAR_INIT(0);
 static atomic_bool mpir = ATOMIC_VAR_INIT(false);
 static atomic_bool rec = ATOMIC_VAR_INIT(false);
 
+#ifdef DEBUG
+static struct timespec start;
+static struct timespec end;
+#endif
+
 static int is_ultrasonic_enabled;
 static int is_atexit_enabled;
 
@@ -149,6 +154,11 @@ int main(void) {
     log_exit();
     exit(1);
   }
+
+#ifdef DEBUG
+  memset(&start, 0, sizeof(struct timespec));
+  memset(&end, 0, sizeof(struct timespec));
+#endif
 
   /* init and lock the mutex before creating the threads.  As long as the
   mutex stays locked, the threads should keep running.  A pointer to the
@@ -491,10 +501,7 @@ void interrupt_callback(void *param) {
 }
 
 int on_file_create(char *filename, char *content) {
-  static struct timespec start, end;
-
   if(strcmp(filename, "record") == 0) {
-    _log_debug("recording state changed to: %s\n", content);
     if(strcmp(content, "false") == 0) {
 #ifndef DEBUG
       atomic_store(&rec, false);
@@ -506,17 +513,18 @@ int on_file_create(char *filename, char *content) {
         log_debug("recorded video of length %lf seconds\n", elapsed/1E9);
       }
 #endif
-    }else {
-#ifndef DEBUG
-      atomic_store(&rec, true);
-#else
-      if(atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
-        log_debug("started recording\n");
+    }else if(strcmp(content, "true") == 0){
+#ifdef DEBUG
+      log_debug("started recording\n");
 
-        clock_gettime(CLOCK_REALTIME, &start);
-      }
+      clock_gettime(CLOCK_REALTIME, &start);
 #endif
     }
+#ifdef DEBUG
+    else {
+      log_debug("recording state changed to: %s\n", content);
+    }
+#endif
     return 1;
   }else {
     return 0;
