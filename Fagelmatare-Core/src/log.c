@@ -188,9 +188,9 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
 
   if(lstack_push(&log_stack, ent) != 0) {
     pthread_mutex_lock(&mxs);
-    fprintf(log_stream, "in log_msg: enqueue log entry failed\n");
+    fprintf(log_stream, "in log_msg: enqueue log entry failed (size %d)\n", lstack_size(&log_stack));
     pthread_mutex_unlock(&mxs);
-
+    free(ent);
     goto ON_ERROR;
   }
 
