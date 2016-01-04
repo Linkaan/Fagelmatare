@@ -68,8 +68,10 @@ void free_config(struct config *configuration) {
   free(configuration->username);
   free(configuration->passwd);
   free(configuration->sock_path);
+  free(configuration->shandler_log);
   configuration->serv_addr = NULL;
   configuration->username = NULL;
   configuration->passwd = NULL;
   configuration->sock_path = NULL;
+  configuration->shandler_log = NULL;
 }
