@@ -512,6 +512,10 @@ void interrupt_callback(void *param) {
 
 int on_file_create(char *filename, char *content) {
   if(strcmp(filename, "record") == 0) {
+    if(!content) {
+      log_error("in on_file_create: content for file '%s' is null.\n", filename);
+      return 1;
+    }
     if(strcmp(content, "false") == 0) {
 #ifndef DEBUG
       atomic_store(&rec, false);
