@@ -33,6 +33,7 @@
 
 #define QUERY_BUFFER_SIZE 589
 
+static const char *last_error = NULL;
 static MYSQL *mysql = NULL;
 static MYSQL_STMT *stmt = NULL;
 
@@ -41,23 +42,26 @@ int connect_to_database(const char *address, const char *user, const char *pwd) 
 
   if(!mysql) mysql = mysql_init(NULL);
   if(!mysql) {
+    last_error = mysql_error(mysql);
     return mysql_errno(mysql);
   }
 
   mysql_options(mysql, MYSQL_OPT_RECONNECT, &(int){ 1 });
   if(!mysql_real_connect(mysql, address, user, pwd, "fagelmatare", 0, NULL, 0)) {
-    if(mysql) mysql_close(mysql);
+    last_error = mysql_error(mysql);
     return mysql_errno(mysql);
   }
 
   stmt = mysql_stmt_init(mysql);
   if(!stmt) {
+    last_error = strerror(CR_OUT_OF_MEMORY);
     return CR_OUT_OF_MEMORY;
   }
 
   strcpy(query, "INSERT INTO `logg` (severity,event,source,datetime)"
 						    "VALUES(?,?,?,?)");
   if(mysql_stmt_prepare(stmt, query, strlen(query))) {
+    last_error = mysql_stmt_error(stmt);
     return mysql_stmt_errno(stmt);
   }
 
@@ -69,13 +73,18 @@ int log_to_database(log_entry *ent) {
   MYSQL_BIND sbind[4];
   struct tm *tm_info;
 
-  if(!ent) return EFAULT;
+  if(!ent) {
+    last_error = NULL;
+    return EFAULT;
+  }
 
   if(!mysql || !stmt) {
+    last_error = NULL;
     return -1;
   }
 
   if(mysql_ping(mysql)) {
+    last_error = mysql_error(mysql);
     return mysql_errno(mysql);
   }
 
@@ -115,10 +124,15 @@ int log_to_database(log_entry *ent) {
   ts.second= tm_info->tm_sec;
 
   if(mysql_stmt_execute(stmt)) {
+    last_error = mysql_stmt_error(stmt);
     return mysql_stmt_errno(stmt);
   }
 
   return 0;
+}
+
+const char *dblogger_error() {
+  return last_error;
 }
 
 int disconnect(void) {
