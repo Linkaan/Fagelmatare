@@ -154,7 +154,7 @@ void *log_func(void *param) {
         (err = log_to_database (ent)) != 0) {
         const char *error = dblogger_error();
 
-        if(error != NULL && *error) {
+        if(error != NULL) {
           pthread_mutex_lock(&mxs);
           fprintf(log_stream, "could not log to database (%d : %s)\n", err, error);
           pthread_mutex_unlock(&mxs);
