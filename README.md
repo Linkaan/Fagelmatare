@@ -1,5 +1,7 @@
 ### Fågelmatare
 
+[![Join the chat at https://gitter.im/Linkaan/Fagelmatare](https://badges.gitter.im/Linkaan/Fagelmatare.svg)](https://gitter.im/Linkaan/Fagelmatare?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 ### About Fågelmataren
 
 Fågelmataren is an advanced bird feeder equipped with many peripherals to interact with wild birds. This github repository is a collection of programs to achieve the functions below.
