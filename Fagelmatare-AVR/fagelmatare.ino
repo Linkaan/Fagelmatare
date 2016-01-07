@@ -23,7 +23,7 @@
  *****************************************************************************
  */
 
-#include <Servo.h>
+#define PING_ENABLED
 #include <NewPing.h>
 
 #define MAX_TIME  99999.0f
@@ -32,7 +32,6 @@
 #define ECHO_PIN         9 // Arduino pin tied to echo pin on ping sensor.
 #define MAX_DISTANCE   200 // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
 
-//#define THRESHOLD 1000.0f
 #define COOLDOWN 1000L
 
 #define R2  72000.0f
@@ -47,13 +46,14 @@
 #define B 0.0002413f
 #define C 0.0000000f
 
-#define SERVO_BEGIN_POS 90
+#define SERVO_PIN        8
+#define SERVO_BEGIN_POS 180
 #define SERVO_END_POS   50
 #define SERVO_SPEED     10
 
 #define PING_SPEED      50 // How frequently are we going to send out a ping (in milliseconds). 50ms would be 20 times a second.
 
-Servo servo;
+#if defined(PING_ENABLED)
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
 
 unsigned long pingtimer;        // Holds the next ping time.
@@ -65,54 +65,24 @@ float g = 0.99f; // this is a coefficient between 0.0 and 1.0
 float avg_time = MAX_TIME;
 float avg_dt = 0.0f;
 float dt_hysteresis = 1.0f;
+#endif
+int duration = 7.222222*SERVO_BEGIN_POS+900;
 
 /*
  * In the setup function we initialize the serial bus and prepare the servo.
  */
 void setup() {
   Serial.begin(9600);
-  servo.attach(8);
+#ifndef SERVO_ENABLED
+  pinMode(SERVO_PIN, OUTPUT);
+#else
+  servo.attach(SERVO_PIN);
+#endif
+#if defined(PING_ENABLED)
   pingtimer = millis(); // Start ping timer now.
+#endif
 }
 
-/*
- * This function is used to calculate the variance of six samples from
- * the ultrasonic sensor.
- *//*
-float calculate_variance_distance() {
-  static const int samples = 6;
-  float distances[samples];
-  float sum = 0.0f;
-  float sum1 = 0.0f;
-
-  /*
-   * Obtain six samples and wait 25 ms between each sample to avoid
-   * fetching the same value over and over again.
-   *//*
-  for(int i=0;i<samples;i++) {
-    distances[i] = measure_distance(3);
-    sum = sum + distances[i];
-    delay(25);
-  }
-
-  /*
-   * To calculate the variance we need to:
-   *
-   *  Work out the Mean (the simple average of the numbers)
-   *  Then for each number: subtract the Mean and square the result (the squared difference).
-   *  Then work out the average of those squared differences.
-   *//*
-  float avrg = sum / (float)(samples);
-  for(int i=0;i<samples;++i) {
-    sum1 = sum1 + pow((distances[i] - avrg),2);
-  }
-
-  /*
-   * We need the variance to tell how spread out the samples are.
-   *//*
-  return sum1 / (float)(samples);
-}
-*/
 /*
  * In order to calculate the median we need a function to sort an array.
  */
@@ -141,36 +111,6 @@ void sort_array(float *ar, int n) {
   sort_array(l, ar + n - l);
 }
 
-/*
- * We need a function to calculate the distance pursuing to the ultrasonic sensor.
- *//*
-float measure_distance(int tries) {
-  /*
-   * The accuracy of my ultrasonic sensor is 4 metres. If it exceeds 4 metres it is most
-   * likely a false reading. So we try again until we get a reading below that or tries is zero.
-   *//*
-  for(;tries;--tries) {
-    digitalWrite(TRIG_PIN, LOW); // Set trigger pin low.
-    delayMicroseconds(2); // Let signal settle.
-    digitalWrite(TRIG_PIN, HIGH); // Set trigger pin high.
-    delayMicroseconds(10); // Delay in high state.
-    digitalWrite(TRIG_PIN, LOW); // Ping has now been sent.
-    unsigned long duration = pulseIn(ECHO_PIN, HIGH, 23280); // Duration is presented in microseconds.
-    unsigned long time = micros();
-    while(PINB & 0b00000010) {
-      if((micros() - time) >= 100000) {
-        goto retry;
-      }
-    }
-    if(duration >= 116L && duration <= 23280L) {
-      return ((float)(duration)/2.0) / 29.1;
-    }
-    retry:
-    continue;
-  }
-  return 400.0f;
-}
-*/
 /*
  * We use Steinhart–Hart equation to calculate the temperature.
  */
@@ -216,7 +156,11 @@ void sweep() {
    * Go from SERVO_BEGIN_POS to SERVO_END_POS at speed SERVO_SPEED.
    */
   for(pos=SERVO_BEGIN_POS;pos>=(SERVO_END_POS+1);pos--) {
+#ifndef SERVO_ENABLED
+    servoMove(pos);
+#else
     servo.write(pos);
+#endif
     delay(SERVO_SPEED);
   }
 
@@ -224,11 +168,27 @@ void sweep() {
    * Go back from SERVO_END_POS to SERVO_BEGIN_POS at speed SERVO_SPEED.
    */
   for(;pos<SERVO_BEGIN_POS;pos++) {
+#ifndef SERVO_ENABLED
+    servoMove(pos);
+#else
     servo.write(pos);
+#endif
     delay(SERVO_SPEED);
   }
 }
 
+#ifndef SERVO_ENABLED
+void servoMove(int angle) {
+  cli();
+  duration = 7.222222*angle+900;
+  digitalWrite(SERVO_PIN, HIGH);
+  delayMicroseconds(duration);
+  digitalWrite(SERVO_PIN, LOW);
+  sei();
+}
+#endif
+
+#if defined(PING_ENABLED)
 void motion_check() { // Timer2 interrupt calls this function every 24uS where you can check the ping status.
   // Don't do anything here!
   uint8_t rc = sonar.check_timer();
@@ -258,16 +218,24 @@ void motion_check() { // Timer2 interrupt calls this function every 24uS where y
   }
   // Don't do anything here!
 }
+#endif
 
 /*
  * We use the loop function to check if there are any requests and also to check
  * if the variance of the sensor readings exceeds THRESHOLD.
  */
 void loop() {
+#if defined(PING_ENABLED)
   if(millis() >= pingtimer) {    // pingSpeed milliseconds since last ping, do another ping.
     pingtimer += PING_SPEED;      // Set the next ping time.
     sonar.ping_timer(motion_check); // Send out the ping, calls "motion_check" function every 24uS where you can check the ping status.
+    cli();
+    digitalWrite(SERVO_PIN, HIGH);
+    delayMicroseconds(duration);
+    digitalWrite(SERVO_PIN, LOW);
+    sei();
   }
+#endif
   if(Serial.available() > 0) {
     String str = Serial.readStringUntil('\0');
     if(str == "servo") {
@@ -282,12 +250,13 @@ void loop() {
       Serial.print('\0');
       return;
     }
-
+#if defined(PING_ENABLED)
     if(str == "distance") {
       Serial.print("/R/");
       Serial.print(round(sonar.convert_cm(sonar.ping_median())*10));
       Serial.print('\0');
       return;
     }
+#endif
   }
 }
