@@ -46,12 +46,12 @@
 #define B 0.0002413f
 #define C 0.0000000f
 
-#define SERVO_PIN        8
-#define SERVO_BEGIN_POS 180
-#define SERVO_END_POS   50
-#define SERVO_SPEED     10
+#define SERVO_PIN         8
+#define SERVO_BEGIN_POS 100
+#define SERVO_END_POS    50
+#define SERVO_SPEED       5
 
-#define PING_SPEED      50 // How frequently are we going to send out a ping (in milliseconds). 50ms would be 20 times a second.
+#define PING_SPEED       50 // How frequently are we going to send out a ping (in milliseconds). 50ms would be 20 times a second.
 
 #if defined(PING_ENABLED)
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
@@ -60,7 +60,7 @@ unsigned long pingtimer;        // Holds the next ping time.
 unsigned long cooldown;         // Limit how frequently we rise a moton event.
 
 unsigned int iterations = 5;
-float g = 0.99f; // this is a coefficient between 0.0 and 1.0
+float g = 0.95f; // this is a coefficient between 0.0 and 1.0
                 // the higher it is the more "inert" the filter will be
 float avg_time = MAX_TIME;
 float avg_dt = 0.0f;
