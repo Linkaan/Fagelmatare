@@ -48,7 +48,7 @@
 
 #define SERVO_PIN         8
 #define SERVO_BEGIN_POS 100
-#define SERVO_END_POS    50
+#define SERVO_END_POS    30
 #define SERVO_SPEED       5
 
 #define PING_SPEED       50 // How frequently are we going to send out a ping (in milliseconds). 50ms would be 20 times a second.
@@ -73,11 +73,7 @@ int duration = 7.222222*SERVO_BEGIN_POS+900;
  */
 void setup() {
   Serial.begin(9600);
-#ifndef SERVO_ENABLED
   pinMode(SERVO_PIN, OUTPUT);
-#else
-  servo.attach(SERVO_PIN);
-#endif
 #if defined(PING_ENABLED)
   pingtimer = millis(); // Start ping timer now.
 #endif
@@ -156,11 +152,7 @@ void sweep() {
    * Go from SERVO_BEGIN_POS to SERVO_END_POS at speed SERVO_SPEED.
    */
   for(pos=SERVO_BEGIN_POS;pos>=(SERVO_END_POS+1);pos--) {
-#ifndef SERVO_ENABLED
     servoMove(pos);
-#else
-    servo.write(pos);
-#endif
     delay(SERVO_SPEED);
   }
 
@@ -168,16 +160,11 @@ void sweep() {
    * Go back from SERVO_END_POS to SERVO_BEGIN_POS at speed SERVO_SPEED.
    */
   for(;pos<SERVO_BEGIN_POS;pos++) {
-#ifndef SERVO_ENABLED
     servoMove(pos);
-#else
-    servo.write(pos);
-#endif
     delay(SERVO_SPEED);
   }
 }
 
-#ifndef SERVO_ENABLED
 void servoMove(int angle) {
   cli();
   duration = 7.222222*angle+900;
@@ -186,7 +173,6 @@ void servoMove(int angle) {
   digitalWrite(SERVO_PIN, LOW);
   sei();
 }
-#endif
 
 #if defined(PING_ENABLED)
 void motion_check() { // Timer2 interrupt calls this function every 24uS where you can check the ping status.
@@ -225,17 +211,17 @@ void motion_check() { // Timer2 interrupt calls this function every 24uS where y
  * if the variance of the sensor readings exceeds THRESHOLD.
  */
 void loop() {
-#if defined(PING_ENABLED)
   if(millis() >= pingtimer) {    // pingSpeed milliseconds since last ping, do another ping.
     pingtimer += PING_SPEED;      // Set the next ping time.
+    #if defined(PING_ENABLED)
     sonar.ping_timer(motion_check); // Send out the ping, calls "motion_check" function every 24uS where you can check the ping status.
+    #endif
     cli();
     digitalWrite(SERVO_PIN, HIGH);
     delayMicroseconds(duration);
     digitalWrite(SERVO_PIN, LOW);
     sei();
   }
-#endif
   if(Serial.available() > 0) {
     String str = Serial.readStringUntil('\0');
     if(str == "servo") {
