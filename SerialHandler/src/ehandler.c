@@ -255,7 +255,7 @@ void ehandler_cleanup() {
     for(j = 0;j < events[i]->ssize;j++) {
       if((events[i]->subscribers)[j]) {
         _log_debug("closing connection to socket %d because cleanup.\n", (events[i]->subscribers)[j]);
-        close((events[i]->subscribers)[j]);
+        close((events[i]->subscribers)[j]); // segmentation fault!
       }
     }
     free(events[i]->subscribers);

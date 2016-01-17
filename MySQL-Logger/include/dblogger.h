@@ -36,8 +36,6 @@ extern int connect_to_database(const char *address, const char *user, const char
 
 extern int log_to_database(log_entry *ent);
 
-extern const char *dblogger_error(void);
-
 extern int disconnect(void);
 
 #ifdef __cplusplus
