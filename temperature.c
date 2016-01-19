@@ -75,13 +75,6 @@ int main(void) {
     exit(EXIT_FAILURE);
   }
 
-  if(NULL == mysql_real_connect(mysql, configs.serv_addr, configs.username, configs.passwd, "fagelmatare", 0, NULL, 0)) {
-    mysql_close(mysql);
-    fprintf(stderr, "%s\n", mysql_error(mysql));
-    free_config(&configs);
-    exit(EXIT_FAILURE);
-  }
-
   memset(&addr, 0, sizeof(addr));
   addr.sun_family = AF_UNIX;
   strncpy(addr.sun_path, configs.sock_path, sizeof(addr.sun_path)-1);
@@ -140,6 +133,13 @@ int main(void) {
           close(fd);
           continue;
         }
+
+        if(NULL == mysql_real_connect(mysql, configs.serv_addr, configs.username, configs.passwd, "fagelmatare", 0, NULL, 0)) {
+          fprintf(stderr, "%s\n", mysql_error(mysql));
+          close(fd);
+          continue;
+        }
+
         asprintf(&query,
           "INSERT INTO `temperatur` ("
           "`source`,`temperature`, `datetime`"
