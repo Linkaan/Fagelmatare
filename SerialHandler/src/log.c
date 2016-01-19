@@ -41,7 +41,7 @@ static FILE *log_stream;
 static pthread_t log_thread;
 static lstack_t log_stack;
 
-static struct time_t *last_conn;
+static time_t *last_conn;
 
 static int need_quit(pthread_mutex_t *);
 void *log_func(void *);
