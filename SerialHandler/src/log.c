@@ -130,8 +130,7 @@ void *log_func(void *param) {
         pthread_mutex_unlock(&mxs);
       }
       if((err = log_to_database(ent)) != 0) {
-        if((err != CR_SERVER_GONE_ERROR && err != -1) ||
-          (err = _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
+        if((err = _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
           (err = log_to_database (ent)) != 0) {
           char buffer[20];
 
@@ -160,8 +159,7 @@ void *log_func(void *param) {
       pthread_mutex_unlock(&mxs);
     }
     if((err = log_to_database(ent)) != 0) {
-      if((err != CR_SERVER_GONE_ERROR && err != -1) ||
-        (err = _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
+      if((err = _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
         (err = log_to_database (ent)) != 0) {
         char buffer[20];
 
