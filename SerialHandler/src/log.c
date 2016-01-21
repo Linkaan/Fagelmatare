@@ -41,8 +41,6 @@ static FILE *log_stream;
 static pthread_t log_thread;
 static lstack_t log_stack;
 
-static time_t *last_conn;
-
 static int need_quit(pthread_mutex_t *);
 void *log_func(void *);
 
@@ -94,14 +92,6 @@ int log_init(struct user_data_log *userdata) {
   return 0;
 }
 
-int _connect_to_database(const char *address, const char *user, const char *pwd) {
-  int err = connect_to_database(address, user, pwd);
-  if(err == 0) {
-    time(last_conn);
-  }
-  return err;
-}
-
 void log_exit() {
   pthread_mutex_unlock(&mxq);
   pthread_join(log_thread, NULL);
@@ -114,7 +104,7 @@ void *log_func(void *param) {
   struct user_data_log *userdata = param;
   log_entry* ent = NULL;
 
-  _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd);
+  connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd);
 
   while(!need_quit(&mxq)) {
     // TODO add proper polling system
@@ -130,13 +120,10 @@ void *log_func(void *param) {
         pthread_mutex_unlock(&mxs);
       }
       if((err = log_to_database(ent)) != 0) {
-        if((err = _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
+        if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
           (err = log_to_database (ent)) != 0) {
-          char buffer[20];
-
           pthread_mutex_lock(&mxs);
-          strftime(buffer, 20, "%F %H:%M:%S", localtime(last_conn));
-          fprintf(log_stream, "could not log to database: %d (last established connection: %s)\n", err, buffer);
+          fprintf(log_stream, "could not log to database: %d\n", err);
           pthread_mutex_unlock(&mxs);
         }
       }
@@ -159,13 +146,10 @@ void *log_func(void *param) {
       pthread_mutex_unlock(&mxs);
     }
     if((err = log_to_database(ent)) != 0) {
-      if((err = _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
+      if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
         (err = log_to_database (ent)) != 0) {
-        char buffer[20];
-
         pthread_mutex_lock(&mxs);
-        strftime(buffer, 20, "%F %H:%M:%S", localtime(last_conn));
-        fprintf(log_stream, "could not log to database: %d (last established connection: %s)\n", err, buffer);
+        fprintf(log_stream, "could not log to database: %d\n", err);
         pthread_mutex_unlock(&mxs);
       }
     }
