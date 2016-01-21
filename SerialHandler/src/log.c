@@ -109,6 +109,10 @@ void *log_func(void *param) {
   while(!need_quit(&mxq)) {
     // TODO add proper polling system
     if((ent = lstack_pop(&log_stack)) != NULL) {
+      if(ent->event == 0x0 ||
+         ent->source == 0x0 ||
+         ent->rawtime == 0x0) continue;
+
       if(ent->severity >= userdata->log_level) {
         char buffer[20], lls_buffer[10];
 
@@ -135,6 +139,10 @@ void *log_func(void *param) {
   }
 
   while((ent = lstack_pop(&log_stack)) != NULL) {
+    if(ent->event == 0x0 ||
+       ent->source == 0x0 ||
+       ent->rawtime == 0x0) continue;
+       
     if(ent->severity >= userdata->log_level) {
       char buffer[20], lls_buffer[10];
 
