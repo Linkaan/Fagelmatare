@@ -112,7 +112,10 @@ void *log_func(void *param) {
     if((ent = lstack_pop(&log_stack)) != NULL) {
       if(ent->event == 0x0 ||
          ent->source == 0x0 ||
-         ent->rawtime == 0x0) continue;
+         ent->rawtime == 0x0) {
+           log_warn("log_entry had uninitalized values (%p).\n", ent);
+           continue;
+         }
 
       if(ent->severity >= userdata->log_level) {
         char buffer[20], lls_buffer[10];
@@ -142,8 +145,11 @@ void *log_func(void *param) {
   while((ent = lstack_pop(&log_stack)) != NULL) {
     if(ent->event == 0x0 ||
        ent->source == 0x0 ||
-       ent->rawtime == 0x0) continue;
-       
+       ent->rawtime == 0x0) {
+         log_warn("log_entry had uninitalized values (%p).\n", ent);
+         continue;
+       }
+
     if(ent->severity >= userdata->log_level) {
       char buffer[20], lls_buffer[10];
 
@@ -183,7 +189,6 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
 
     goto ON_ERROR;
   }
-
 
   ent->severity = msg_log_level;
   vsprintf(ent->event, format, args);
