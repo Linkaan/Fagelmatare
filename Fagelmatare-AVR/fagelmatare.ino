@@ -60,7 +60,7 @@ unsigned long pingtimer;        // Holds the next ping time.
 unsigned long cooldown;         // Limit how frequently we rise a moton event.
 
 unsigned int iterations = 5;
-float g = 0.98f; // this is a coefficient between 0.0 and 1.0
+float g = 0.95f; // this is a coefficient between 0.0 and 1.0
                 // the higher it is the more "inert" the filter will be
 float avg_time = MAX_TIME;
 float avg_dt = 0.0f;

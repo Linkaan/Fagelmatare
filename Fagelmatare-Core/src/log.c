@@ -41,8 +41,6 @@ static FILE *log_stream;
 static pthread_t log_thread;
 static lstack_t log_stack;
 
-static struct timespec last_conn;
-
 static int need_quit(pthread_mutex_t *);
 void *log_func(void *);
 
@@ -101,18 +99,12 @@ void log_exit() {
   fclose(log_stream);
 }
 
-int _connect_to_database(const char *address, const char *user, const char *pwd) {
-  int err = connect_to_database(address, user, pwd);
-  if(!err) clock_gettime(CLOCK_REALTIME, &last_conn);
-  return err;
-}
-
 void *log_func(void *param) {
   int err;
   struct user_data_log *userdata = param;
   log_entry* ent = NULL;
 
-  _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd);
+  connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd);
 
   while(!need_quit(&mxq)) {
     // TODO add proper polling system
@@ -129,14 +121,11 @@ void *log_func(void *param) {
       }
       if((err = log_to_database(ent)) != 0) {
         if((err != CR_SERVER_GONE_ERROR && err != -1) ||
-          (err = _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
+          (err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
           (err = log_to_database (ent)) != 0) {
-          struct timespec now;
 
           pthread_mutex_lock(&mxs);
-          clock_gettime(CLOCK_REALTIME, &now);
-          double elapsed = (now.tv_sec-last_conn.tv_sec)*1E9 + now.tv_nsec-last_conn.tv_nsec;
-          fprintf(log_stream, "could not log to database: %d (%lfs since last established connection)\n", err, elapsed/1E9);
+          fprintf(log_stream, "could not log to database (%d)\n", err);
           pthread_mutex_unlock(&mxs);
         }
       }
@@ -160,15 +149,19 @@ void *log_func(void *param) {
     }
     if((err = log_to_database(ent)) != 0) {
       if((err != CR_SERVER_GONE_ERROR && err != -1) ||
-        (err = _connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
+        (err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
         (err = log_to_database (ent)) != 0) {
-        struct timespec now;
+        const char *error = dblogger_error();
 
-        pthread_mutex_lock(&mxs);
-        clock_gettime(CLOCK_REALTIME, &now);
-        double elapsed = (now.tv_sec-last_conn.tv_sec)*1E9 + now.tv_nsec-last_conn.tv_nsec;
-        fprintf(log_stream, "could not log to database: %d (%lfs since last established connection)\n", err, elapsed/1E9);
-        pthread_mutex_unlock(&mxs);
+        if(error != NULL) {
+          pthread_mutex_lock(&mxs);
+          fprintf(log_stream, "could not log to database (%d : %s)\n", err, error);
+          pthread_mutex_unlock(&mxs);
+        }else {
+          pthread_mutex_lock(&mxs);
+          fprintf(log_stream, "could not log to database (%d)\n", err);
+          pthread_mutex_unlock(&mxs);
+        }
       }
     }
     free(ent->rawtime);
