@@ -3,3 +3,5 @@
 -------------------------
 
 - Code needs refactoring
+- Fix bug with enqueue log entry failed due MySQL-Logger failing
+- Fix invalid pointer error in log.c

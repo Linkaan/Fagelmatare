@@ -4,3 +4,4 @@
 
 - Code needs refactoring
 - Change serialization protocol to binary.
+- Fix invalid pointer error in log.c
