@@ -34,7 +34,7 @@
 
 #define COOLDOWN 1000L
 
-#define R2  72000.0f
+#define R2  57.6f
 #define Vin 3.3f
 
 /*
@@ -42,26 +42,29 @@
  * the temperature based on the resistance of my NTC resistor. They have
  * been cut down to ten millionths.
  */
-#define A 0.0005651f
-#define B 0.0002413f
-#define C 0.0000000f
+#define A 0.0027713f
+#define B 0.0002516f
+#define C 0.0000003f
 
 #define SERVO_PIN         8
 #define SERVO_BEGIN_POS 100
 #define SERVO_END_POS    30
 #define SERVO_SPEED       5
 
-#define PING_SPEED       50 // How frequently are we going to send out a ping (in milliseconds). 50ms would be 20 times a second.
+#define PING_EVENT       10 // How frequently are we going to send a serie of pings to check for rain. Value of 10 would be every 10 * PING_SPEED milliseconds.
+#define PING_SPEED      100 // How frequently are we going to send out a ping (in milliseconds). 50ms would be 20 times a second.
 
 #if defined(PING_ENABLED)
 NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
 
 unsigned long pingtimer;        // Holds the next ping time.
-unsigned long cooldown;         // Limit how frequently we rise a moton event.
+unsigned long cooldown;         // Limit how frequently we rise a rain event.
 
+boolean do_ping = false;
+unsigned int pingcount = 1;
 unsigned int iterations = 5;
 float g = 0.95f; // this is a coefficient between 0.0 and 1.0
-                // the higher it is the more "inert" the filter will be
+                 // the higher it is the more "inert" the filter will be
 float avg_time = MAX_TIME;
 float avg_dt = 0.0f;
 float dt_hysteresis = 1.0f;
@@ -175,7 +178,7 @@ void servoMove(int angle) {
 }
 
 #if defined(PING_ENABLED)
-void motion_check() { // Timer2 interrupt calls this function every 24uS where you can check the ping status.
+void rain_check() { // Timer2 interrupt calls this function every 24uS where you can check the ping status.
   // Don't do anything here!
   uint8_t rc = sonar.check_timer();
   if(rc==0) { // This is how you check to see if the ping was received.
@@ -192,7 +195,7 @@ void motion_check() { // Timer2 interrupt calls this function every 24uS where y
       if(millis() > cooldown && (avg_dt < -dt_hysteresis || avg_dt > +dt_hysteresis)) {
         cooldown = millis() + COOLDOWN;
         Serial.print("/E/");
-        Serial.print("motion");
+        Serial.print("rain");
         Serial.print('\0');
       }
     }
@@ -211,10 +214,21 @@ void motion_check() { // Timer2 interrupt calls this function every 24uS where y
  * if the variance of the sensor readings exceeds THRESHOLD.
  */
 void loop() {
-  if(millis() >= pingtimer) {    // pingSpeed milliseconds since last ping, do another ping.
+  if(millis() >= pingtimer) {     // pingSpeed milliseconds since last ping, do another ping.
     pingtimer += PING_SPEED;      // Set the next ping time.
     #if defined(PING_ENABLED)
-    sonar.ping_timer(motion_check); // Send out the ping, calls "motion_check" function every 24uS where you can check the ping status.
+    pingcount++;
+    if(!do_ping && pingcount % 100 == 0) {
+      do_ping = true;
+      pingcount = 1;
+    }
+    if(do_ping) {
+      sonar.ping_timer(rain_check); // Send out the ping, calls "rain_check" function every 24uS where you can check the ping status.
+      if(pingcount % 10 == 0) {
+        do_ping = false;
+        pingcount = 1;
+      }
+    }
     #endif
     cli();
     digitalWrite(SERVO_PIN, HIGH);
