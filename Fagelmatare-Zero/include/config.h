@@ -32,8 +32,8 @@ struct config {
  char *serv_addr;
  char *username;
  char *passwd;
- char *shandler_log;
- char *sock_path;
+ char *fagelmatare_log;
+ char *inet_addr;
  int inet_port;
 };
 

@@ -206,8 +206,8 @@ int main(void) {
   addrlen = sizeof(struct sockaddr_in);
   memset(&addr_in, 0, addrlen);
   addr_un.sun_family = AF_INET;
-  server.sin_addr.s_addr = inet_addr(configs.pizero_addr);
-  server.sin_port = htons(configs.pizero_port);
+  server.sin_addr.s_addr = INADDR_ANY;
+  server.sin_port = htons(configs.inet_port);
 
   if(bind(inetsock, (struct sockaddr *) &addr, addrlen) < 0) {
     log_fatal("AF_INET: bind error: %s\n", strerror(errno));

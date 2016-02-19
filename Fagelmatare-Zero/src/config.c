@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <config.h>
 
 int get_config(char *filename, struct config *configuration) {
@@ -49,10 +50,8 @@ int get_config(char *filename, struct config *configuration) {
           configuration->username = strdup(pch);
         }else if(!strcmp(pch, "passwd") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->passwd = strdup(pch);
-        }else if(!strcmp(pch, "socket_path") && (pch = strtok(NULL, DELIM)) != NULL) {
-          configuration->sock_path = strdup(pch);
-        }else if(!strcmp(pch, "shandler_log_file") && (pch = strtok(NULL, DELIM)) != NULL) {
-          configuration->shandler_log = strdup(pch);
+        }else if(!strcmp(pch, "inet_addr") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->inet_addr = strdup(pch);
         }else if(!strcmp(pch, "inet_port") && (pch = strtok(NULL, DELIM)) != NULL) {
           char *end;
 
@@ -60,6 +59,8 @@ int get_config(char *filename, struct config *configuration) {
           if (*end || errno == ERANGE) {
             return 1;
           }
+        }else if(!strcmp(pch, "fagelmatare_log_file") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->fagelmatare_log = strdup(pch);
         }
       }
     }
@@ -74,11 +75,11 @@ void free_config(struct config *configuration) {
   free(configuration->serv_addr);
   free(configuration->username);
   free(configuration->passwd);
-  free(configuration->sock_path);
-  free(configuration->shandler_log);
+  free(configuration->inet_addr);
+  free(configuration->fagelmatare_log);
   configuration->serv_addr = NULL;
   configuration->username = NULL;
   configuration->passwd = NULL;
-  configuration->sock_path = NULL;
-  configuration->shandler_log = NULL;
+  configuration->inet_addr = NULL;
+  configuration->fagelmatare_log = NULL;
 }

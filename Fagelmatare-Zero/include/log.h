@@ -1,6 +1,7 @@
 /*
- *  config.h
- *    Parse configuration file used by this program.
+ *  log.h
+ *    Log messages to server with specified log level using MySQL-Logger
+ *    library.
  *    Copyright (C) 2015 Linus Styrén
  *****************************************************************************
  *  This file is part of Fågelmataren:
@@ -23,20 +24,38 @@
  *****************************************************************************
  */
 
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef LOG_H
+#define LOG_H
 
-#define DELIM " \n"
+#include <stdarg.h>
+#include <libdblogger/dblogger.h>
+#include <libdblogger/log_entry.h>
+#include <config.h>
 
-struct config {
- char *serv_addr;
- char *username;
- char *passwd;
- char *shandler_log;
- char *sock_path;
- int inet_port;
+enum {
+  LOG_LEVEL_NONE = 0,
+  LOG_LEVEL_DEBUG= 1,
+  LOG_LEVEL_INFO = 2,
+  LOG_LEVEL_WARN = 3,
+  LOG_LEVEL_ERROR= 4,
+  LOG_LEVEL_FATAL= 5,
 };
 
-int get_config(char *filename, struct config *configuration);
-void free_config(struct config *configuration);
+struct user_data_log {
+  int log_level;
+  struct config *configs;
+};
+
+void log_level_string(char *lls_buffer, int msg_log_level);
+int log_init(struct user_data_log *userdata);
+void log_exit();
+int log_get_level(void);
+void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char *format, va_list args);
+void log_msg_level(int msg_log_level, time_t *rawtime, const char *source, const char *format, ...);
+void log_debug(const char *format, ...);
+void log_info(const char *format, ...);
+void log_warn(const char *format, ...);
+void log_error(const char *format, ...);
+void log_fatal(const char *format, ...);
+
 #endif
