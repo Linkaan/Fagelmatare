@@ -70,7 +70,6 @@ static pthread_mutex_t userdata_mutex = PTHREAD_MUTEX_INITIALIZER;
 static sem_t wakeup_main;
 static sem_t cleanup_done;
 static atomic_int fd 	= ATOMIC_VAR_INIT(0);
-//static atomic_bool mping = ATOMIC_VAR_INIT(false);
 static atomic_bool mpir = ATOMIC_VAR_INIT(false);
 static atomic_bool rec = ATOMIC_VAR_INIT(false);
 
@@ -79,7 +78,6 @@ static struct timespec start;
 static struct timespec end;
 #endif
 
-static int is_ultrasonic_enabled;
 static int is_atexit_enabled;
 
 void interrupt_callback	(void *param);
@@ -353,7 +351,7 @@ void *ping_func(void *param) {
     return NULL;
   }
 
-  len = asprintf(&msg, "/S/motion");
+  len = asprintf(&msg, "/S/rain");
   if(len < 0) {
     log_error("asprintf error: %s\n", strerror(errno));
     close(sockfd);
@@ -396,7 +394,7 @@ void *ping_func(void *param) {
         size_t len = strlen(buf);
         memmove(buf, buf+3, len - 3 + 1);
         for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
-          if(!strncasecmp("motion", buf, strlen(buf))) {
+          if(!strncasecmp("rain", buf, strlen(buf))) {
             rawtime = malloc(sizeof(time_t));
             if(rawtime == NULL) {
               log_fatal("in ping_func: memory allocation failed: (%s)\n", strerror(errno));
@@ -404,7 +402,7 @@ void *ping_func(void *param) {
               continue;
             }
             time(rawtime);
-            log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "motion\n");
+            log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "rain\n");
           }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
@@ -441,7 +439,7 @@ void *ping_func(void *param) {
         break;
       }else if(rc == 0) {
         is_ultrasonic_enabled = 0;
-        log_warn("the subscription of event \"motion\" was reset by peer.\n");
+        log_warn("the subscription of event \"rain\" was reset by peer.\n");
         close(sockfd);
         sleep(5);
         goto ConnectToPeer;
