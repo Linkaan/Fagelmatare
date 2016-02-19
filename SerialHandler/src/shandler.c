@@ -71,6 +71,7 @@ struct user_data {
 };
 
 static int is_atexit_enabled;
+
 static sem_t wakeup_main;
 static sem_t cleanup_done;
 
@@ -89,11 +90,14 @@ void cleanup        ();
 void exit_handler   ();
 
 int main(void) {
-  int sock, flags;
+  int unixsock;
+  int inetsock;
+  int flags;
   int sfd;
   int err;
   int pipefd[2];
-  struct sockaddr_un addr;
+  struct sockaddr_un addr_un;
+  struct sockaddr_in addr_in;
   struct config configs;
   socklen_t addrlen;
   serial_args* sargs;
@@ -137,44 +141,95 @@ int main(void) {
     exit(1);
   }
 
-  if((sock = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
-    log_fatal("socket error: %s\n", strerror(errno));
+  if((unixsock = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
+    log_fatal("socket(AF_UNIX, SOCK_STREAM, 0) error: %s\n", strerror(errno));
     log_exit();
     exit(1);
   }
 
-  if(setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
-    log_fatal("setsockopt(SO_REUSEADDR) failed: %s\n", strerror(errno));
-    close(sock);
+  if((inetsock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+    log_fatal("socket(AF_INET, SOCK_STREAM, 0) error: %s\n", strerror(errno));
+    close(unixsock);
     log_exit();
     exit(1);
   }
 
-  flags = fcntl(sock, F_GETFL, 0);
-  if((fcntl(sock, F_SETFL, flags | O_NONBLOCK)) < 0) {
-    log_fatal("fnctl failed: %s\n", strerror(errno));
-    close(sock);
+  if(setsockopt(unixsock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
+    log_fatal("AF_UNIX: setsockopt(SO_REUSEADDR) failed: %s\n", strerror(errno));
+    close(unixsock);
+    close(inetsock);
     log_exit();
     exit(1);
   }
 
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, configs.sock_path, sizeof(addr.sun_path)-1);
+  if(setsockopt(unixsock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
+    log_fatal("AF_INET: setsockopt(SO_REUSEADDR) failed: %s\n", strerror(errno));
+    close(unixsock);
+    close(inetsock);
+    log_exit();
+    exit(1);
+  }
+
+  flags = fcntl(unixsock, F_GETFL, 0);
+  if((fcntl(unixsock, F_SETFL, flags | O_NONBLOCK)) < 0) {
+    log_fatal("AF_UNIX: fnctl failed: %s\n", strerror(errno));
+    close(unixsock);
+    close(inetsock);
+    log_exit();
+    exit(1);
+  }
+
+  flags = fcntl(inetsock, F_GETFL, 0);
+  if((fcntl(inetsock, F_SETFL, flags | O_NONBLOCK)) < 0) {
+    log_fatal("AF_INET: fnctl failed: %s\n", strerror(errno));
+    close(unixsock);
+    close(inetsock);
+    log_exit();
+    exit(1);
+  }
+
   addrlen = sizeof(struct sockaddr_un);
+  memset(&addr_un, 0, addrlen);
+  addr_un.sun_family = AF_UNIX;
+  strncpy(addr_un.sun_path, configs.sock_path, sizeof(addr_un.sun_path)-1);
 
   unlink(configs.sock_path);
 
-  if(bind(sock, (struct sockaddr *) &addr, addrlen) < 0) {
-    log_fatal("bind error: %s\n", strerror(errno));
-    close(sock);
+  if(bind(unixsock, (struct sockaddr *) &addr, addrlen) < 0) {
+    log_fatal("AF_UNIX: bind error: %s\n", strerror(errno));
+    close(unixsock);
+    close(inetsock);
     log_exit();
     exit(1);
   }
 
-  if(listen(sock, 5) < 0) {
-    log_fatal("listen error: %s\n", strerror(errno));
-    close(sock);
+  addrlen = sizeof(struct sockaddr_in);
+  memset(&addr_in, 0, addrlen);
+  addr_un.sun_family = AF_INET;
+  server.sin_addr.s_addr = inet_addr(configs.pizero_addr);
+  server.sin_port = htons(configs.pizero_port);
+
+  if(bind(inetsock, (struct sockaddr *) &addr, addrlen) < 0) {
+    log_fatal("AF_INET: bind error: %s\n", strerror(errno));
+    close(unixsock);
+    close(inetsock);
+    log_exit();
+    exit(1);
+  }
+
+  if(listen(unixsock, 5) < 0) {
+    log_fatal("AF_UNIX: listen error: %s\n", strerror(errno));
+    close(unixsock);
+    close(inetsock);
+
+    log_exit();
+    exit(1);
+  }
+
+  if(listen(inetsock, 5) < 0) {
+    log_fatal("AF_INET: listen error: %s\n", strerror(errno));
+    close(unixsock);
+    close(inetsock);
     log_exit();
     exit(1);
   }
@@ -185,19 +240,13 @@ int main(void) {
     exit(1);
   }
 
-  if(ehandler_insert("motion") == NULL) {
-    log_fatal("ehandler_insert error: %s\n", strerror(errno));
-    log_exit();
-    exit(1);
-  }
-
   struct user_data userdata = {
     .results = &results,
     .mxq = &mxq,
     .mxs = &mxs,
     .sfd = &sfd,
     .pipefd = &pipefd[0],
-    .sock = &sock,
+    .sock = &(int){ unixsock, inetsock },
     .addr = &addr,
     .configs = &configs,
     .addrlen = &addrlen,
@@ -208,13 +257,13 @@ int main(void) {
   pthread_mutex_lock(&mxq);
   if(pthread_create(&network_thread, NULL, network_func, &userdata)) {
     log_fatal("creating network thread: %s\n", strerror(errno));
-    close(sock);
+    close(unixsock);
     log_exit();
     exit(1);
   }
   if(pthread_create(&serial_thread, NULL, listen_serial, &userdata)) {
     log_fatal("creating serial thread: %s\n", strerror(errno));
-    close(sock);
+    close(unixsock);
     log_exit();
     exit(1);
   }
@@ -256,7 +305,7 @@ int main(void) {
       send_serial(sargs->msg, sargs->sock, &userdata);
       free(sargs);
     }
-    usleep(50000);
+    usleep(50000); // TODO add proper polling system here
   }
 
   pthread_mutex_unlock(&mxq);
@@ -387,7 +436,7 @@ void *listen_serial(void *param) {
     pthread_mutex_lock(userdata->mxs);
     if(!serialDataAvail(*(userdata->sfd))) {
       pthread_mutex_unlock(userdata->mxs);
-      usleep(50000);
+      usleep(50000); // TODO: do proper polling system here
       continue;
     }
 
@@ -417,23 +466,31 @@ void *listen_serial(void *param) {
 
 void *network_func(void *param) {
   int cl, rc, await;
+  int sock;
   char buf[129];
   struct pollfd p[2];
   struct user_data *userdata = param;
   int *pipefd = userdata->pipefd;
-  pthread_mutex_t *mxq = (pthread_mutex_t*) userdata->mxq;
 
-  bzero(&p, sizeof(p));
-  p[0].fd = *userdata->sock;
+  memset(&p, 0, sizeof(p));
+  p[0].fd = (userdata->sock)[0];
   p[0].revents = 0;
   p[0].events = POLLIN|POLLPRI;
   p[1] = p[0];
-  p[1].fd = pipefd[0];
+  p[1].fd = (userdata->sock)[1];
+  p[2] = p[0];
+  p[2].fd = pipefd[0];
 
   while (1) {
-    if(poll(p, 2, -1) > 0) {
-      if(need_quit(mxq)) break;
-      if((cl = accept(*userdata->sock, (struct sockaddr *) userdata->addr, userdata->addrlen)) < 0) {
+    if(poll(p, 3, -1) > 0) {
+      if(p[0].revents & POLLIN|POLLPRI) {
+        sock = p[0].fd;
+      }else if(p[1].revents & POLLIN|POLLPRI) {
+        sock = p[1].fd;
+      }else if(p[2].revents & POLLIN|POLLPRI) {
+        break;
+      }
+      if((cl = accept(sock, (struct sockaddr *) userdata->addr, userdata->addrlen)) < 0) {
         log_error("accept error: %s\n", strerror(errno));
         continue;
       }

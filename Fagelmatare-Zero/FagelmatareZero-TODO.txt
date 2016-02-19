@@ -1,0 +1,7 @@
+-------------------------
+ Fagelmatare Zero - TODO
+-------------------------
+
+- Add basic networking
+- Add sense hat libraries
+- Implement logging of sensor information
