@@ -173,15 +173,18 @@ int main(void) {
 void *network_func(void *param) {
   struct user_data *userdata = param;
   int sockfd, rc, len;
+  int valopt;
   int flags;
   char *msg, buf[144];
   struct sockaddr_in addr;
   socklen_t addrlen;
+  fd_set myset;
+  struct timeval tv; 
   struct pollfd p[2];
   time_t *rawtime;
 
   memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_UNIX;
+  addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = inet_addr(userdata->configs->inet_addr);
   addr.sin_port = htons(userdata->configs->inet_port);
   addrlen = sizeof(struct sockaddr_un);
@@ -202,10 +205,47 @@ void *network_func(void *param) {
   }
 
   if(connect(sockfd, (struct sockaddr*) &addr, addrlen) == -1) {
-    log_error("in network_func: connect error: %s\n", strerror(errno));
-    close(sockfd);
-    log_exit();
-    exit(1);
+    if(errno == EINPROGRESS) {
+      _log_debug("EINPROGRESS in connect() - selecting\n");
+      do {
+        tv.tv_sec = 15;
+        tv.tv_usec = 0;
+        FD_ZERO(&myset);
+        FD_SET(sockfd, &myset);
+        rc = select(sockfd+1, NULL, &myset, NULL, &tv);
+        if(rc < 0 && errno != EINTR) {
+          log_error("in network_func: select failed: %s\n", strerror(errno));
+          close(sockfd);
+          log_exit();
+          exit(1);
+        }else if(rc > 0) {
+          addrlen = sizeof(int);
+          if(getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *)(&valopt), &addrlen) < 0) {
+            log_error("in network_func: getsockopt failed: %s\n", strerror(errno));
+            close(sockfd);
+            log_exit();
+            exit(1);
+          }
+          if(valopt) {
+            log_error("in network_func: delayed connect() failed: %s\n", strerror(valopt));
+            close(sockfd);
+            log_exit();
+            exit(1);
+          }
+          break;
+        }else {
+           log_error("in network_func: select timed out, reconnecting.\n");
+           close(sockfd);
+           sleep(5);
+           goto ConnectToPeer;
+         }
+      } while (1);
+    }else {
+      log_error("in network_func: connect error: %s\n", strerror(errno));
+      close(sockfd);
+      log_exit();
+      exit(1);
+    }
   }
 
   len = asprintf(&msg, "/S/rain|temp");
