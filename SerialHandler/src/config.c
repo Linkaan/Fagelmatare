@@ -26,6 +26,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <config.h>
 
 int get_config(char *filename, struct config *configuration) {

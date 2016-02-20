@@ -28,6 +28,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <arpa/inet.h>
 #include <sys/poll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -64,10 +65,9 @@ struct user_data {
   pthread_mutex_t *mxs;
   int *sfd;
   int *pipefd;
-  int *sock;
-  struct sockaddr_un *addr;
+  int (*sock)[2];
+  struct sockaddr *(*addr)[2];
   struct config *configs;
-  socklen_t *addrlen;
 };
 
 static int is_atexit_enabled;
@@ -195,7 +195,7 @@ int main(void) {
 
   unlink(configs.sock_path);
 
-  if(bind(unixsock, (struct sockaddr *) &addr, addrlen) < 0) {
+  if(bind(unixsock, (struct sockaddr *) &addr_un, addrlen) < 0) {
     log_fatal("AF_UNIX: bind error: %s\n", strerror(errno));
     close(unixsock);
     close(inetsock);
@@ -205,11 +205,11 @@ int main(void) {
 
   addrlen = sizeof(struct sockaddr_in);
   memset(&addr_in, 0, addrlen);
-  addr_un.sun_family = AF_INET;
-  server.sin_addr.s_addr = INADDR_ANY;
-  server.sin_port = htons(configs.inet_port);
+  addr_in.sin_family = AF_INET;
+  addr_in.sin_addr.s_addr = INADDR_ANY;
+  addr_in.sin_port = htons(configs.inet_port);
 
-  if(bind(inetsock, (struct sockaddr *) &addr, addrlen) < 0) {
+  if(bind(inetsock, (struct sockaddr *) &addr_in, addrlen) < 0) {
     log_fatal("AF_INET: bind error: %s\n", strerror(errno));
     close(unixsock);
     close(inetsock);
@@ -240,16 +240,17 @@ int main(void) {
     exit(1);
   }
 
+  int sock[2] = {unixsock, inetsock};
+  struct sockaddr *addr[2] = { (struct sockaddr *) &addr_un, (struct sockaddr *) &addr_in};
   struct user_data userdata = {
     .results = &results,
     .mxq = &mxq,
     .mxs = &mxs,
     .sfd = &sfd,
     .pipefd = &pipefd[0],
-    .sock = &(int){ unixsock, inetsock },
+    .sock = &sock,
     .addr = &addr,
     .configs = &configs,
-    .addrlen = &addrlen,
   };
 
   pthread_mutex_init(&mxq,NULL);
@@ -466,31 +467,37 @@ void *listen_serial(void *param) {
 
 void *network_func(void *param) {
   int cl, rc, await;
-  int sock;
+  int sock = 0;
   char buf[129];
-  struct pollfd p[2];
+  struct pollfd p[3];
+  struct sockaddr *addr = NULL;
   struct user_data *userdata = param;
   int *pipefd = userdata->pipefd;
+  socklen_t addrlen = 0;
 
   memset(&p, 0, sizeof(p));
-  p[0].fd = (userdata->sock)[0];
+  p[0].fd = (*userdata->sock)[0];
   p[0].revents = 0;
   p[0].events = POLLIN|POLLPRI;
   p[1] = p[0];
-  p[1].fd = (userdata->sock)[1];
+  p[1].fd = (*userdata->sock)[1];
   p[2] = p[0];
   p[2].fd = pipefd[0];
 
   while (1) {
     if(poll(p, 3, -1) > 0) {
-      if(p[0].revents & POLLIN|POLLPRI) {
+      if(p[0].revents & (POLLIN|POLLPRI)) {
         sock = p[0].fd;
-      }else if(p[1].revents & POLLIN|POLLPRI) {
+        addr = (*userdata->addr)[1];
+        addrlen = sizeof(struct sockaddr_un);
+      }else if(p[1].revents & (POLLIN|POLLPRI)) {
         sock = p[1].fd;
-      }else if(p[2].revents & POLLIN|POLLPRI) {
+        addr = (*userdata->addr)[1];
+        addrlen = sizeof(struct sockaddr_in);
+      }else if(p[2].revents & (POLLIN|POLLPRI)) {
         break;
       }
-      if((cl = accept(sock, (struct sockaddr *) userdata->addr, userdata->addrlen)) < 0) {
+      if((cl = accept(sock, addr, &addrlen)) < 0) {
         log_error("accept error: %s\n", strerror(errno));
         continue;
       }
@@ -556,7 +563,8 @@ void *network_func(void *param) {
       }
     }
   }
-  close(*userdata->sock);
+  close((*userdata->sock)[0]);
+  close((*userdata->sock)[1]);
   unlink(userdata->configs->sock_path);
   return NULL;
 }

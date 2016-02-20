@@ -78,6 +78,7 @@ static struct timespec start;
 static struct timespec end;
 #endif
 
+static int is_ultrasonic_enabled;
 static int is_atexit_enabled;
 
 void interrupt_callback	(void *param);

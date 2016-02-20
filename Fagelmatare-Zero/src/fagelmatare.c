@@ -28,6 +28,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <arpa/inet.h>
 #include <sys/select.h>
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -56,12 +57,10 @@
 #endif
 
 struct user_data {
-  lstack_t *results;
   pthread_mutex_t *mxq;
   int *pipefd;
   struct config *configs;
 };
-static pthread_mutex_t userdata_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static sem_t wakeup_main;
 static sem_t cleanup_done;
@@ -83,7 +82,6 @@ int sem_posted(sem_t *sem) {
 }
 
 int main(void) {
-  int err;
   int pipefd[2];
   struct config configs;
   pthread_t network_thread;
@@ -180,11 +178,12 @@ void *network_func(void *param) {
   struct sockaddr_in addr;
   socklen_t addrlen;
   struct pollfd p[2];
+  time_t *rawtime;
 
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_UNIX;
-  addr.sin_addr = inet_addr(configs.inet_addr);
-  addr.sin_port = htons(configs.inet_port);
+  addr.sin_addr.s_addr = inet_addr(userdata->configs->inet_addr);
+  addr.sin_port = htons(userdata->configs->inet_port);
   addrlen = sizeof(struct sockaddr_un);
 
   ConnectToPeer:
@@ -209,7 +208,7 @@ void *network_func(void *param) {
     exit(1);
   }
 
-  len = asprintf(&msg, "/S/rain");
+  len = asprintf(&msg, "/S/rain|temp");
   if(len < 0) {
     log_error("in network_func: asprintf error: %s\n", strerror(errno));
     close(sockfd);
@@ -238,7 +237,7 @@ void *network_func(void *param) {
 
   while(1) {
     if(poll(p, 2, -1)) {
-      if(p[1].revents & POLLIN|POLLPRI) {
+      if(p[1].revents & (POLLIN|POLLPRI)) {
         break;
       }
 
@@ -260,6 +259,8 @@ void *network_func(void *param) {
             }
             time(rawtime);
             log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "rain\n");
+          }else if(!strncasecmp("temp", buf, strlen(buf))) {
+            _log_debug("caught event temp!!");
           }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
@@ -294,7 +295,6 @@ void *network_func(void *param) {
         log_exit();
         exit(1);
       }else if(rc == 0) {
-        is_ultrasonic_enabled = 0;
         log_warn("the subscription of event \"rain\" was reset by peer.\n");
         close(sockfd);
         sleep(5);
