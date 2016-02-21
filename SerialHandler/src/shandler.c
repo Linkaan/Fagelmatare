@@ -162,7 +162,7 @@ int main(void) {
     exit(1);
   }
 
-  if(setsockopt(unixsock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
+  if(setsockopt(inetsock, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
     log_fatal("AF_INET: setsockopt(SO_REUSEADDR) failed: %s\n", strerror(errno));
     close(unixsock);
     close(inetsock);
