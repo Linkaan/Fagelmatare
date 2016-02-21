@@ -32,6 +32,7 @@
 typedef struct {
     char *type;
     int *subscribers;
+    pthread_mutex_t mxt;
     size_t ssize, cap;
 } event_t;
 

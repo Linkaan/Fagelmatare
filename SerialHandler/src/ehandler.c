@@ -41,6 +41,11 @@
 #define _log_debug(format, ...) log_debug(format, ##__VA_ARGS__)
 #endif
 
+struct event_e {
+    event_t *event;
+    char *data;
+};
+
 static pthread_mutex_t ehandler_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static pthread_t queue_thread;
@@ -55,26 +60,41 @@ static int need_quit(pthread_mutex_t *);
 void *queue_func(void *param) {
   int i, rc, len;
   char *str;
-  event_t *event;
+  struct event_e *ee;
 
   while(!need_quit(&ehandler_mutex)) {
-    if((event = lstack_pop(&event_queue)) != NULL) {
-      asprintf(&str, "/E/%s", event->type);
-      len = strlen(str);
-      for(i = 0;i < event->ssize;i++) {
-        if((rc = send((event->subscribers)[i], str, len, MSG_NOSIGNAL)) != len) {
+    if((ee = lstack_pop(&event_queue)) != NULL) {
+      pthread_mutex_lock(ee->event->mxt);
+
+      if(ee->data) {
+        len = asprintf(&str, "/E/%s:%s", ee->event->type, ee->data);
+      }else {
+        len = asprintf(&str, "/E/%s", ee->event->type);
+      }
+      if(len < 0) {
+        log_error("in queue_func: asprintf error: %s\n", strerror(errno));
+        free(ee->data);
+        pthread_mutex_unlock(ee->event->mxt);
+        free(str);
+        continue;
+      }
+
+      for(i = 0;i < ee->event->ssize;i++) {
+        if((rc = send((ee->event->subscribers)[i], str, len, MSG_NOSIGNAL)) != len) {
           if(rc > 0) log_error("partial write (%d of %d)\n", rc, len);
           else {
             if(rc < 0) {
-              _log_debug("closing connection to socket %d because send error: %s\n", (event->subscribers)[i], strerror(errno));
+              _log_debug("closing connection to socket %d because send error: %s\n", (ee->event->subscribers)[i], strerror(errno));
             }else {
-              _log_debug("closing connection to socket %d because reading end is closed.\n", (event->subscribers)[i]);
+              _log_debug("closing connection to socket %d because reading end is closed.\n", (ee->event->subscribers)[i]);
             }
-            close((event->subscribers)[i]);
-            remove_element(event->subscribers, i--, (event->ssize)--);
+            close((ee->event->subscribers)[i]);
+            remove_element(ee->event->subscribers, i--, (ee->event->ssize)--);
           }
         }
       }
+      free(ee->data);
+      pthread_mutex_unlock(ee->event->mxt);
       free(str);
     }
     usleep(50000);
@@ -145,12 +165,16 @@ event_t *ehandler_insert(char *type) {
     return NULL;
   }
   ++esize;
+
+  pthread_mutex_init(events[esize-1]->mxt, NULL);
+  pthread_mutex_lock(events[esize-1]->mxt);
   events[esize-1]->type = strdup(type);
   events[esize-1]->ssize = 0;
   events[esize-1]->subscribers = malloc(sizeof(int));
   if(events[esize-1]->subscribers != NULL) {
     events[esize-1]->cap = 1;
   }
+  pthread_mutex_unlock(events[esize-1]->mxt);
   return events[esize-1];
 }
 
@@ -158,15 +182,34 @@ event_t *ehandler_get(char *type) {
   int i;
 
   for(i = 0;i < esize;i++) {
+    pthread_mutex_lock(events[i]->mxt);
     if(!strncasecmp(type, events[i]->type, strlen(events[i]->type))) {
+      pthread_mutex_unlock(events[i]->mxt);
       return events[i];
     }
+    pthread_mutex_unlock(events[i]->mxt);
   }
   return NULL;
 }
 
 int ehandler_handle(event_t *event) {
-  if(lstack_push(&event_queue, event) != 0) {
+  return ehandler_handle(event, NULL);
+}
+
+int ehandler_handle(event_t *event, char *data) {
+  struct event_e *ee = malloc(sizeof(struct event_e));
+  if(ee == NULL) {
+    return -1;
+  }
+
+  event_e->event = event;
+  if(data) {
+    event_e->data = strdup(data);
+  }else {
+    event_e->data = NULL;
+  }
+
+  if(lstack_push(&event_queue, ee) != 0) {
     errno = ENOMEM;
     return -1;
   }
@@ -200,8 +243,8 @@ int ehandler_subscribe(char *type, int socket) {
   FD_SET(socket, &set);
 
   memset(&timeout, 0, sizeof(timeout));
-  timeout.tv_sec = 1;
-  timeout.tv_usec = 500000;
+  timeout.tv_sec = 5;
+  timeout.tv_usec = 0;
 
   rc = select(socket+1, &set, NULL, NULL, &timeout);
   if(rc < 0) {
@@ -226,12 +269,14 @@ int ehandler_subscribe(char *type, int socket) {
     return -1;
   }
 
+  pthread_mutex_lock(event->mxt);
   if(++(event->ssize) > event->cap) {
     tmp = realloc(event->subscribers, event->ssize * sizeof(int));
     if(tmp == NULL) {
       --(event->ssize);
       _log_debug("closing connection to socket %d because out of memory\n", socket);
       close(socket);
+      pthread_mutex_unlock(event->mxt);
       return ENOMEM;
     }else {
       event->subscribers = tmp;
@@ -240,6 +285,7 @@ int ehandler_subscribe(char *type, int socket) {
   }
 
   (event->subscribers)[event->ssize-1] = socket;
+  pthread_mutex_unlock(event->mxt);
   return 0;
 }
 
@@ -252,6 +298,7 @@ void ehandler_cleanup() {
   lstack_free(&event_queue);
 
   for(i = 0;i < esize;i++) {
+    pthread_mutex_lock(events[i]->mxt);
     for(j = 0;j < events[i]->ssize;j++) {
       if((events[i]->subscribers)[j]) {
         _log_debug("closing connection to socket %d because cleanup.\n", (events[i]->subscribers)[j]);
@@ -260,6 +307,8 @@ void ehandler_cleanup() {
     }
     free(events[i]->subscribers);
     free(events[i]->type);
+    pthread_mutex_unlock(events[i]->mxt);
+    pthread_mutex_destroy(events[i]->mxt);
     free(events[i]);
   }
   free(events);

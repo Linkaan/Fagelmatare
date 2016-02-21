@@ -253,7 +253,7 @@ int main(void) {
     .configs = &configs,
   };
 
-  pthread_mutex_init(&mxq,NULL);
+  pthread_mutex_init(&mxq, NULL);
   pthread_mutex_init(&mxs, NULL);
   pthread_mutex_lock(&mxq);
   if(pthread_create(&network_thread, NULL, network_func, &userdata)) {
