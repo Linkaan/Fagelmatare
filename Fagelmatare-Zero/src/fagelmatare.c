@@ -57,7 +57,6 @@
 #endif
 
 struct user_data {
-  pthread_mutex_t *mxq;
   int *pipefd;
   struct config *configs;
 };
@@ -67,7 +66,6 @@ static sem_t cleanup_done;
 
 static int is_atexit_enabled;
 
-int need_quit       (pthread_mutex_t *mtx);
 void *network_func	(void *param);
 
 void die		        (int sig);

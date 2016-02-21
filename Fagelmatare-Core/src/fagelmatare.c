@@ -61,11 +61,9 @@
 
 struct user_data {
   lstack_t *results;
-  pthread_mutex_t *mxq;
   int *pipefd;
   struct config *configs;
 };
-static pthread_mutex_t userdata_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static sem_t wakeup_main;
 static sem_t cleanup_done;
@@ -78,16 +76,13 @@ static struct timespec start;
 static struct timespec end;
 #endif
 
-static int is_ultrasonic_enabled;
 static int is_atexit_enabled;
 
 void interrupt_callback	(void *param);
 
-int need_quit       (pthread_mutex_t *mtx);
 int touch           (const char *file);
 void *timer_func  	(void *param);
 void *queue_func	  (void *param);
-void *ping_func		  (void *param);
 void reset_timer  	(void);
 
 int fdutimensat     (int fd, int dir, char const *file, struct timespec const ts[2], int atflag);
@@ -104,16 +99,13 @@ int sem_posted(sem_t *sem) {
   return sval;
 }
 
-
 int main(void) {
   int err;
   int pipefd[2];
   struct config configs;
   pthread_t timer_thread;
-  pthread_t ping_thread;
   pthread_t state_thread;
   lstack_t results; /* lstack_t struct used by lstack */
-  pthread_mutex_t mxq; /* mutex used as quit flag */
 
   /* parse configuration file */
   if(get_config(CONFIG_PATH, &configs)) {
@@ -134,7 +126,6 @@ int main(void) {
   /* init user_data struct used by threads for synchronization */
   struct user_data userdata = {
     .configs = &configs,
-    .mxq     = &mxq,
     .pipefd  = &pipefd[0],
     .results = &results,
   };
@@ -167,20 +158,8 @@ int main(void) {
   memset(&end, 0, sizeof(struct timespec));
 #endif
 
-  /* init and lock the mutex before creating the threads.  As long as the
-  mutex stays locked, the threads should keep running.  A pointer to the
-  userdata struct containing the mutex is passed as the argument to the thread
-  functions. */
-  pthread_mutex_init(&mxq,NULL);
-  pthread_mutex_lock(&mxq);
   if(pthread_create(&timer_thread, NULL, timer_func, &userdata)) {
     log_fatal("creating timer thread: %s\n", strerror(errno));
-    log_exit();
-    exit(1);
-  }
-
-  if(pthread_create(&ping_thread, NULL, ping_func, &userdata)) {
-    log_fatal("creating ping thread: %s\n", strerror(errno));
     log_exit();
     exit(1);
   }
@@ -231,17 +210,13 @@ int main(void) {
   // block this thread until process is interrupted
   sem_wait(&wakeup_main);
 
-  /* unlock mxq to tell the threads to terminate, then join the threads */
-  pthread_mutex_unlock(&mxq);
-
+  /* write to other end of pipe to tell the threads to terminate, then join the threads */
   write(pipefd[1], NULL, 8);
   close(pipefd[1]);
   close(atomic_load(&fd));
 
   stop_watching_state();
-  pthread_join(ping_thread, NULL);
   pthread_join(timer_thread, NULL);
-  pthread_mutex_destroy(&mxq);
   lstack_free(&results);
 
   if(atomic_load(&rec)) {
@@ -258,38 +233,24 @@ int main(void) {
   sem_post(&cleanup_done);
 }
 
-/* Returns 1 (true) if the mutex is unlocked, which is the
- * thread's signal to terminate.
- */
-int need_quit(pthread_mutex_t *mxq) {
-  switch(pthread_mutex_trylock(mxq)) {
-    case 0: /* if we got the lock, unlock and return 1 (true) */
-      pthread_mutex_unlock(mxq);
-      return 1;
-    case EBUSY: /* return 0 (false) if the mutex was locked */
-      return 0;
-  }
-  return 1;
-}
-
 void *timer_func(void *param) {
   struct user_data *userdata = param;
   struct pollfd p[2];
 
-  bzero(&p, sizeof(p));
+  memset(&p, 0, sizeof(p));
 
   p[0].fd = atomic_load(&fd);
   p[0].revents = 0;
   p[0].events = POLLIN|POLLPRI;
   p[1] = p[0];
-
-  pthread_mutex_lock(&userdata_mutex);
   p[1].fd = userdata->pipefd[0];
-  pthread_mutex_unlock(&userdata_mutex);
 
   while (1) {
     if(poll(p, 2, -1)) {
-      if(need_quit(userdata->mxq)) break;
+      if(p[1].revents & (POLLIN|POLLPRI)) {
+        break;
+      }
+
       read(atomic_load(&fd), NULL, 8);
       if(atomic_load(&rec)) {
         if(touch(userdata->configs->stop_hook)) {
@@ -299,10 +260,7 @@ void *timer_func(void *param) {
       }
     }
   }
-
-  pthread_mutex_lock(&userdata_mutex);
   close(userdata->pipefd[0]);
-  pthread_mutex_unlock(&userdata_mutex);
 
   if(atomic_load(&rec)) {
     if(touch(userdata->configs->stop_hook)) {
@@ -310,147 +268,6 @@ void *timer_func(void *param) {
       atomic_store(&rec, true);
     }
   }
-  return NULL;
-}
-
-void *ping_func(void *param) {
-  struct user_data *userdata = param;
-  int sockfd, rc, len;
-  int flags;
-  char *msg, buf[144];
-  struct sockaddr_un addr;
-  socklen_t addrlen;
-  struct pollfd p[2];
-  time_t *rawtime;
-
-  memset(&buf, 0, sizeof(buf));
-
-  memset(&addr, 0, sizeof(addr));
-  addr.sun_family = AF_UNIX;
-  strncpy(addr.sun_path, userdata->configs->sock_path, sizeof(addr.sun_path)-1);
-  addrlen = sizeof(struct sockaddr_un);
-
-  ConnectToPeer:
-  if((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
-    log_error("socket error: %s\n", strerror(errno));
-    is_ultrasonic_enabled = 0;
-    return NULL;
-  }
-
-  flags = fcntl(sockfd, F_GETFL, 0);
-  if((fcntl(sockfd, F_SETFL, flags | O_NONBLOCK)) < 0) {
-    log_fatal("fnctl failed: %s\n", strerror(errno));
-    close(sockfd);
-    is_ultrasonic_enabled = 0;
-    return NULL;
-  }
-
-  if(connect(sockfd, (struct sockaddr*) &addr, addrlen) == -1) {
-    log_error("connect error: %s\n", strerror(errno));
-    close(sockfd);
-    is_ultrasonic_enabled = 0;
-    return NULL;
-  }
-
-  len = asprintf(&msg, "/S/rain");
-  if(len < 0) {
-    log_error("asprintf error: %s\n", strerror(errno));
-    close(sockfd);
-    free(msg);
-    is_ultrasonic_enabled = 0;
-    return NULL;
-  }
-  if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
-    if(rc > 0) log_error("partial write (%d of %d)\n", rc, len);
-    else {
-      log_error("failed to subscribe to event (send error: %s)\n", strerror(errno));
-      close(sockfd);
-      free(msg);
-      is_ultrasonic_enabled = 0;
-      return NULL;
-    }
-  }
-  free(msg);
-
-  bzero(&p, sizeof(p)); // why are you using bzero!?
-  p[0].fd = sockfd;
-  p[0].revents = 0;
-  p[0].events = POLLIN|POLLPRI;
-  p[1] = p[0];
-
-  pthread_mutex_lock(&userdata_mutex);
-  p[1].fd = userdata->pipefd[0];
-  pthread_mutex_unlock(&userdata_mutex);
-
-  while(1) {
-    if(poll(p, 2, -1)) {
-      if(need_quit(userdata->mxq)) break;
-
-      memset(&buf, 0, sizeof(buf));
-      if((rc = recv(sockfd, buf, sizeof(buf), 0)) > 0) {
-        if(strncasecmp("/E/", buf, 3)) {
-          log_error("read string violating protocol (%s)\n", buf);
-          continue;
-        }
-        size_t len = strlen(buf);
-        memmove(buf, buf+3, len - 3 + 1);
-        for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
-          if(!strncasecmp("rain", buf, strlen(buf))) {
-            rawtime = malloc(sizeof(time_t));
-            if(rawtime == NULL) {
-              log_fatal("in ping_func: memory allocation failed: (%s)\n", strerror(errno));
-              // abort() ???
-              continue;
-            }
-            time(rawtime);
-            log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "rain\n");
-          }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
-            _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
-            len = asprintf(&msg, "/R/subscribed");
-            if(len < 0) {
-              log_error("asprintf error: %s\n", strerror(errno));
-              close(sockfd);
-              free(msg);
-              is_ultrasonic_enabled = 0;
-              break;
-            }
-            if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
-              if(rc > 0) log_error("partial write (%d of %d)\n", rc, len);
-              else {
-                log_error("failed to subscribe to event (write error: %s)\n", strerror(errno));
-                close(sockfd);
-                free(msg);
-                is_ultrasonic_enabled = 0;
-                break;
-              }
-            }
-            free(msg);
-            is_ultrasonic_enabled = 1;
-          }else {
-            log_error("read string violating protocol (%s)\n", buf);
-          }
-        }
-      }else if(rc < 0) {
-        if(errno == EWOULDBLOCK || EAGAIN == errno) {
-          log_warn("socket is non-blocking and recv was called with no data available: %s\n", strerror(errno));
-          continue;
-        }
-        log_error("recv error: %s\n", strerror(errno));
-        is_ultrasonic_enabled = 0;
-        break;
-      }else if(rc == 0) {
-        is_ultrasonic_enabled = 0;
-        log_warn("the subscription of event \"rain\" was reset by peer.\n");
-        close(sockfd);
-        sleep(5);
-        goto ConnectToPeer;
-      }
-    }
-  }
-
-  pthread_mutex_lock(&userdata_mutex);
-  close(userdata->pipefd[0]);
-  pthread_mutex_unlock(&userdata_mutex);
   return NULL;
 }
 
