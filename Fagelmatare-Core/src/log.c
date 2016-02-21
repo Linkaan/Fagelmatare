@@ -120,9 +120,11 @@ void *log_func(void *param) {
         pthread_mutex_unlock(&mxs);
       }
       if((err = log_to_database(ent)) != 0) {
-        if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
-          (err = log_to_database (ent)) != 0) {
-
+        if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
+          pthread_mutex_lock(&mxs);
+          fprintf(log_stream, "could not connect to database (%d)\n", err);
+          pthread_mutex_unlock(&mxs);
+        }else if((err = log_to_database (ent)) != 0) {
           pthread_mutex_lock(&mxs);
           fprintf(log_stream, "could not log to database (%d)\n", err);
           pthread_mutex_unlock(&mxs);
@@ -147,19 +149,14 @@ void *log_func(void *param) {
       pthread_mutex_unlock(&mxs);
     }
     if((err = log_to_database(ent)) != 0) {
-      if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0 ||
-        (err = log_to_database (ent)) != 0) {
-        const char *error = dblogger_error();
-
-        if(error != NULL) {
-          pthread_mutex_lock(&mxs);
-          fprintf(log_stream, "could not log to database (%d : %s)\n", err, error);
-          pthread_mutex_unlock(&mxs);
-        }else {
-          pthread_mutex_lock(&mxs);
-          fprintf(log_stream, "could not log to database (%d)\n", err);
-          pthread_mutex_unlock(&mxs);
-        }
+      if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
+        pthread_mutex_lock(&mxs);
+        fprintf(log_stream, "could not connect to database (%d)\n", err);
+        pthread_mutex_unlock(&mxs);
+      }else if((err = log_to_database (ent)) != 0) {
+        pthread_mutex_lock(&mxs);
+        fprintf(log_stream, "could not log to database (%d)\n", err);
+        pthread_mutex_unlock(&mxs);
       }
     }
     free(ent->rawtime);
