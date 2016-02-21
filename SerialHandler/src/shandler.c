@@ -519,8 +519,10 @@ void *network_func(void *param) {
         }else if(!strncasecmp("/E/", buf, 3)) {
           size_t len = strlen(buf);
           memmove(buf, buf+3, len - 3 + 1);
+          char *type = strtok(buf, ":");
           event_t *event = ehandler_get(buf);
-          if(event == NULL || ehandler_handle(event)) {
+          char *data = strtok(NULL, ":");
+          if(event == NULL || (data ? ehandler_handle(event, data) : ehandler_handle(event))) {
             log_error("unable to handle event (%s)\n", buf);
           }
           _log_debug("caught event %s.\n", buf);

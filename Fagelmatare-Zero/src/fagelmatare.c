@@ -305,7 +305,22 @@ void *network_func(void *param) {
             time(rawtime);
             log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "rain\n");
           }else if(!strncasecmp("temp", buf, strlen(buf))) {
-            _log_debug("caught event temp!!");
+            strtok(buf, ":");
+            char *data = strtok(NULL, ":");
+            if(data) {
+              char *end;
+
+              int cpu_temp = (int) strtol(data, &end, 10);
+              if (*end || errno == ERANGE) {
+                fprintf(stderr, "error parsing temperature: %s\n", data);
+                cpu_temp = -1;
+              }else {
+                cpu_temp /= cpu_temp;
+              }
+              _log_debug("caught event temp (%d C)", cpu_temp);
+            }else {
+              _log_debug("caught event temp\n");
+            }
           }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
