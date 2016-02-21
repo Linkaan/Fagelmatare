@@ -145,7 +145,7 @@ event_t *ehandler_insert(char *type) {
     return NULL;
   }
   ++esize;
-  events[esize-1]->type = type;
+  events[esize-1]->type = strdup(type);
   events[esize-1]->ssize = 0;
   events[esize-1]->subscribers = malloc(sizeof(int));
   if(events[esize-1]->subscribers != NULL) {
@@ -259,6 +259,7 @@ void ehandler_cleanup() {
       }
     }
     free(events[i]->subscribers);
+    free(events[i]->type);
     free(events[i]);
   }
   free(events);
