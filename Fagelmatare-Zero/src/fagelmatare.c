@@ -179,7 +179,7 @@ void *network_func(void *param) {
   struct sockaddr_in addr;
   socklen_t addrlen;
   fd_set myset;
-  struct timeval tv; 
+  struct timeval tv;
   struct pollfd p[2];
   time_t *rawtime;
 
@@ -192,6 +192,13 @@ void *network_func(void *param) {
   ConnectToPeer:
   if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
     log_error("in network_func: socket(AF_INET, SOCK_STREAM, 0) error: %s\n", strerror(errno));
+    log_exit();
+    exit(1);
+  }
+
+  if(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
+    log_fatal("in network_func: setsockopt(SO_REUSEADDR) failed: %s\n", strerror(errno));
+    close(sockfd);
     log_exit();
     exit(1);
   }
@@ -234,7 +241,7 @@ void *network_func(void *param) {
           }
           break;
         }else {
-           log_error("in network_func: select timed out, reconnecting.\n");
+           log_warn("in network_func: select timed out, reconnecting.\n");
            close(sockfd);
            sleep(5);
            goto ConnectToPeer;
