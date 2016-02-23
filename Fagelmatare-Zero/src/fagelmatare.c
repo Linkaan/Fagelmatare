@@ -185,18 +185,11 @@ void *network_func(void *param) {
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = inet_addr(userdata->configs->inet_addr);
   addr.sin_port = htons(userdata->configs->inet_port);
-  addrlen = sizeof(struct sockaddr_un);
+  addrlen = sizeof(struct sockaddr_in);
 
   ConnectToPeer:
   if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
     log_error("in network_func: socket(AF_INET, SOCK_STREAM, 0) error: %s\n", strerror(errno));
-    log_exit();
-    exit(1);
-  }
-
-  if(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
-    log_fatal("in network_func: setsockopt(SO_REUSEADDR) failed: %s\n", strerror(errno));
-    close(sockfd);
     log_exit();
     exit(1);
   }
@@ -262,7 +255,7 @@ void *network_func(void *param) {
     exit(1);
   }
   if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
-    if(rc > 0) log_error("partial write (%d of %d)\n", rc, len);
+    if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
     else {
       log_error("failed to subscribe to event (send error: %s)\n", strerror(errno));
       close(sockfd);
@@ -332,7 +325,7 @@ void *network_func(void *param) {
               exit(1);
             }
             if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
-              if(rc > 0) log_error("partial write (%d of %d)\n", rc, len);
+              if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
               else {
                 log_error("failed to subscribe to event (write error: %s)\n", strerror(errno));
                 close(sockfd);
@@ -365,6 +358,54 @@ void *network_func(void *param) {
 
   close(userdata->pipefd[0]);
   return NULL;
+}
+
+int send_event(struct config *configs, char *event, char *data) {
+  int fd, rc, len;
+  char *msg;
+  struct sockaddr_in addr;
+  socklen_t addrlen;
+
+  if((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    log_error("in send_event: socket error: %s\n", strerror(errno));
+    return 1;
+  }
+
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = inet_addr(userdata->configs->inet_addr);
+  addr.sin_port = htons(userdata->configs->inet_port);
+  addrlen = sizeof(struct sockaddr_in);
+
+  if(connect(fd, (struct sockaddr*) &addr, addrlen) == -1) {
+    log_error("in send_event: connect error: %s\n", strerror(errno));
+    close(fd);
+    return 1;
+  }
+
+  if(data) {
+    len = asprintf(&msg, "/E/%s:%s", event, data);
+  }else {
+    len = asprintf(&msg, "/E/%s", event);
+  }
+  if(len < 0) {
+    log_error("in network_func: asprintf error: %s\n", strerror(errno));
+    close(sockfd);
+    free(msg);
+    return 1;
+  }
+  if((rc = send(fd, msg, len, MSG_NOSIGNAL)) != len) {
+    if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
+    else {
+      log_error("in network_func: send error: %s\n", strerror(errno));
+      close(fd);
+      free(msg);
+      return 1;
+    }
+  }
+  free(msg);
+  close(fd);
+  return 0;
 }
 
 void die(int sig) {

@@ -63,8 +63,13 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
 
-  asprintf(&msg, "/E/%s", argv[1]);
-  len = strlen(msg);
+  len = asprintf(&msg, "/E/%s", argv[1]);
+  if(len < 0) {
+    perror("asprintf error");
+    close(fd);
+    free(msg);
+    exit(EXIT_FAILURE);
+  }
   if((rc = send(fd, msg, len, MSG_NOSIGNAL)) != len) {
     if(rc > 0) fprintf(stderr, "partial write");
     else {
