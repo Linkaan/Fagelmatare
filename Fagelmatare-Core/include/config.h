@@ -37,6 +37,7 @@ struct config {
  char *state_path;
  char *start_hook;
  char *stop_hook;
+ char *subtitle_hook;
  int pir_input;
 };
 

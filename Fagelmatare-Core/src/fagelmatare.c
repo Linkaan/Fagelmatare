@@ -365,6 +365,7 @@ void *network_func(void *param) {
           if(!strncasecmp("templog", buf, strlen(buf))) {
             strtok(buf, ":");
             char *data = strtok(NULL, ":");
+            int cpu_temp = -1;
             if(data) {
               char *end;
 
@@ -378,12 +379,29 @@ void *network_func(void *param) {
               _log_debug("caught event templog (%d C)", cpu_temp);
             }else {
               _log_debug("caught event templog\n");
+              continue;
+            }
+
+            FILE *subtitles = fopen(userdata->configs->subtitle_hook, "w");
+            if(subtitles == NULL) {
+              log_error("in network_func: failed to open subtitles hook for writing");
+            }else {
+              fprintf(subtitles,
+                "text=CPU %.1f'C\n"
+                "font_name=FreeMono:style=Bold\n"
+                "pt=20\n"
+                "layout_align=top,left\n"
+                "text_align=left\n"
+                "horizontal_margin=30\n"
+                "vertical_margin=30\n"
+                "duration=0", cpu_temp);
+              fclose(subtitles);
             }
           }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
             if(len < 0) {
-              log_error("in network_func: asprintf error: %s\n", strerror(errno));
+              log_fatal("in network_func: asprintf error: %s\n", strerror(errno));
               close(sockfd);
               free(msg);
               log_exit();
@@ -392,7 +410,7 @@ void *network_func(void *param) {
             if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
               if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
               else {
-                log_error("failed to subscribe to event (write error: %s)\n", strerror(errno));
+                log_fatal("failed to subscribe to event (write error: %s)\n", strerror(errno));
                 close(sockfd);
                 free(msg);
                 log_exit();

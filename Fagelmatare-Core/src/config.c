@@ -60,6 +60,8 @@ int get_config(char *filename, struct config *configuration) {
           configuration->start_hook = strdup(pch);
         }else if(!strcmp(pch, "stop_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->stop_hook = strdup(pch);
+        }else if(!strcmp(pch, "subtitle_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
+          configuration->subtitle_hook = strdup(pch);
         }else if(!strcmp(pch, "pir_gpio_input") && (pch = strtok(NULL, DELIM)) != NULL) {
           char *end;
 
@@ -85,6 +87,7 @@ void free_config(struct config *configuration) {
   free(configuration->fagelmatare_log);
   free(configuration->state_path);
   free(configuration->start_hook);
+  free(configuration->subtitle_hook);
   free(configuration->stop_hook);
   configuration->serv_addr = NULL;
   configuration->username = NULL;
@@ -94,4 +97,5 @@ void free_config(struct config *configuration) {
   configuration->state_path = NULL;
   configuration->start_hook = NULL;
   configuration->stop_hook = NULL;
+  configuration->subtitle_hook = NULL;
 }
