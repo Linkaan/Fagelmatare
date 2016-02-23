@@ -292,7 +292,6 @@ void *network_func(void *param) {
             rawtime = malloc(sizeof(time_t));
             if(rawtime == NULL) {
               log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
-              // abort() ???
               continue;
             }
             time(rawtime);
@@ -300,6 +299,7 @@ void *network_func(void *param) {
           }else if(!strncasecmp("temp", buf, strlen(buf))) {
             strtok(buf, ":");
             char *data = strtok(NULL, ":");
+            char *data2;
             if(data) {
               char *end;
 
@@ -308,11 +308,19 @@ void *network_func(void *param) {
                 fprintf(stderr, "error parsing temperature: %s\n", data);
                 cpu_temp = -1;
               }else {
-                cpu_temp /= cpu_temp;
+                cpu_temp /= 10;
               }
               _log_debug("caught event temp (%d C)", cpu_temp);
+              len = asprintf(&data2, "%s", data);
+              if(len < 0) {
+                log_error("in network_func: asprintf error: %s\n", strerror(errno));
+                continue;
+              }
+              send_event(userdata->configs, "templog", data2);
+              free(data2);
             }else {
               _log_debug("caught event temp\n");
+              send_event(userdata->configs, "templog");
             }
           }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
@@ -389,15 +397,15 @@ int send_event(struct config *configs, char *event, char *data) {
     len = asprintf(&msg, "/E/%s", event);
   }
   if(len < 0) {
-    log_error("in network_func: asprintf error: %s\n", strerror(errno));
+    log_error("in send_event: asprintf error: %s\n", strerror(errno));
     close(sockfd);
     free(msg);
     return 1;
   }
   if((rc = send(fd, msg, len, MSG_NOSIGNAL)) != len) {
-    if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
+    if(rc > 0) log_error("in send_event: partial write (%d of %d)\n", rc, len);
     else {
-      log_error("in network_func: send error: %s\n", strerror(errno));
+      log_error("in send_event: send error: %s\n", strerror(errno));
       close(fd);
       free(msg);
       return 1;

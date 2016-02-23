@@ -78,6 +78,7 @@ static struct timespec end;
 
 static int is_atexit_enabled;
 
+void *network_func	(void *param);
 void interrupt_callback	(void *param);
 
 int touch           (const char *file);
@@ -105,6 +106,7 @@ int main(void) {
   struct config configs;
   pthread_t timer_thread;
   pthread_t state_thread;
+  pthread_t network_thread;
   lstack_t results; /* lstack_t struct used by lstack */
 
   /* parse configuration file */
@@ -164,6 +166,12 @@ int main(void) {
     exit(1);
   }
 
+  if(pthread_create(&network_thread, NULL, network_func, &userdata)) {
+    log_fatal("creating network thread: %s\n", strerror(errno));
+    log_exit();
+    exit(1);
+  }
+
   /* register a callback function (interrupt_callback) on wiringpi when a
   iterrupt is received on the pir sensor gpio pin. */
   if(wiringPiISR(configs.pir_input, INT_EDGE_BOTH, &interrupt_callback, &userdata) < 0) {
@@ -217,6 +225,7 @@ int main(void) {
 
   stop_watching_state();
   pthread_join(timer_thread, NULL);
+  pthread_join(network_thread, NULL);
   lstack_free(&results);
 
   if(atomic_load(&rec)) {
@@ -231,6 +240,189 @@ int main(void) {
   alarm(0);
 
   sem_post(&cleanup_done);
+}
+
+void *network_func(void *param) {
+  struct user_data *userdata = param;
+  int sockfd, rc, len;
+  int valopt;
+  int flags;
+  char *msg, buf[144];
+  struct sockaddr_in addr;
+  socklen_t addrlen;
+  fd_set myset;
+  struct timeval tv;
+  struct pollfd p[2];
+  time_t *rawtime;
+
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = inet_addr(userdata->configs->inet_addr);
+  addr.sin_port = htons(userdata->configs->inet_port);
+  addrlen = sizeof(struct sockaddr_in);
+
+  ConnectToPeer:
+  if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    log_error("in network_func: socket(AF_INET, SOCK_STREAM, 0) error: %s\n", strerror(errno));
+    log_exit();
+    exit(1);
+  }
+
+  flags = fcntl(sockfd, F_GETFL, 0);
+  if((fcntl(sockfd, F_SETFL, flags | O_NONBLOCK)) < 0) {
+    log_fatal("in network_func: fnctl failed: %s\n", strerror(errno));
+    close(sockfd);
+    log_exit();
+    exit(1);
+  }
+
+  if(connect(sockfd, (struct sockaddr*) &addr, addrlen) == -1) {
+    if(errno == EINPROGRESS) {
+      _log_debug("EINPROGRESS in connect() - selecting\n");
+      do {
+        tv.tv_sec = 15;
+        tv.tv_usec = 0;
+        FD_ZERO(&myset);
+        FD_SET(sockfd, &myset);
+        rc = select(sockfd+1, NULL, &myset, NULL, &tv);
+        if(rc < 0 && errno != EINTR) {
+          log_error("in network_func: select failed: %s\n", strerror(errno));
+          close(sockfd);
+          log_exit();
+          exit(1);
+        }else if(rc > 0) {
+          addrlen = sizeof(int);
+          if(getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *)(&valopt), &addrlen) < 0) {
+            log_error("in network_func: getsockopt failed: %s\n", strerror(errno));
+            close(sockfd);
+            log_exit();
+            exit(1);
+          }
+          if(valopt) {
+            log_error("in network_func: delayed connect() failed: %s\n", strerror(valopt));
+            close(sockfd);
+            log_exit();
+            exit(1);
+          }
+          break;
+        }else {
+           log_warn("in network_func: select timed out, reconnecting.\n");
+           close(sockfd);
+           sleep(5);
+           goto ConnectToPeer;
+         }
+      } while (1);
+    }else {
+      log_error("in network_func: connect error: %s\n", strerror(errno));
+      close(sockfd);
+      log_exit();
+      exit(1);
+    }
+  }
+
+  len = asprintf(&msg, "/S/templog");
+  if(len < 0) {
+    log_error("in network_func: asprintf error: %s\n", strerror(errno));
+    close(sockfd);
+    free(msg);
+    log_exit();
+    exit(1);
+  }
+  if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
+    if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
+    else {
+      log_error("failed to subscribe to event (send error: %s)\n", strerror(errno));
+      close(sockfd);
+      free(msg);
+      log_exit(); // TODO: handle this error better
+      exit(1);
+    }
+  }
+  free(msg);
+
+  memset(&p, 0, sizeof(p));
+  p[0].fd = sockfd;
+  p[0].revents = 0;
+  p[0].events = POLLIN|POLLPRI;
+  p[1] = p[0];
+  p[1].fd = userdata->pipefd[0];
+
+  while(1) {
+    if(poll(p, 2, -1)) {
+      if(p[1].revents & (POLLIN|POLLPRI)) {
+        break;
+      }
+
+      memset(&buf, 0, sizeof(buf));
+      if((rc = recv(sockfd, buf, sizeof(buf), 0)) > 0) {
+        if(strncasecmp("/E/", buf, 3)) {
+          log_error("in network_func: read string violating protocol (%s)\n", buf);
+          continue;
+        }
+        size_t len = strlen(buf);
+        memmove(buf, buf+3, len - 3 + 1);
+        for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
+          if(!strncasecmp("templog", buf, strlen(buf))) {
+            strtok(buf, ":");
+            char *data = strtok(NULL, ":");
+            if(data) {
+              char *end;
+
+              int cpu_temp = (int) strtol(data, &end, 10);
+              if (*end || errno == ERANGE) {
+                fprintf(stderr, "error parsing temperature: %s\n", data);
+                cpu_temp = -1;
+              }else {
+                cpu_temp /= 10;
+              }
+              _log_debug("caught event templog (%d C)", cpu_temp);
+            }else {
+              _log_debug("caught event templog\n");
+            }
+          }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
+            _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
+            len = asprintf(&msg, "/R/subscribed");
+            if(len < 0) {
+              log_error("in network_func: asprintf error: %s\n", strerror(errno));
+              close(sockfd);
+              free(msg);
+              log_exit();
+              exit(1);
+            }
+            if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
+              if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
+              else {
+                log_error("failed to subscribe to event (write error: %s)\n", strerror(errno));
+                close(sockfd);
+                free(msg);
+                log_exit();
+                exit(1);
+              }
+            }
+            free(msg);
+          }else {
+            log_error("in network_func: unknown event (%s)\n", buf);
+          }
+        }
+      }else if(rc < 0) {
+        if(errno == EWOULDBLOCK || EAGAIN == errno) {
+          log_warn("socket is non-blocking and recv was called with no data available: %s\n", strerror(errno));
+          continue;
+        }
+        log_error("in network_func: recv error: %s\n", strerror(errno));
+        log_exit();
+        exit(1);
+      }else if(rc == 0) {
+        log_warn("the subscription of event \"templog\" was reset by peer.\n");
+        close(sockfd);
+        sleep(5);
+        goto ConnectToPeer;
+      }
+    }
+  }
+
+  close(userdata->pipefd[0]);
+  return NULL;
 }
 
 void *timer_func(void *param) {
