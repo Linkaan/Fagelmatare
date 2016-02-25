@@ -38,6 +38,7 @@
 #include <sys/timerfd.h>
 #include <strings.h>
 #include <string.h>
+#include <limits.h>
 #include <time.h>
 #include <semaphore.h>
 #include <signal.h>
@@ -362,23 +363,46 @@ void *network_func(void *param) {
         size_t len = strlen(buf);
         memmove(buf, buf+3, len - 3 + 1);
         for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
-          if(!strncasecmp("templog", buf, strlen(buf))) {
+          if(!strncasecmp("templog", buf, memchr(buf, ':', len))) {
             strtok(buf, ":");
             char *data = strtok(NULL, ":");
-            int cpu_temp = -1;
+            char *text;
             if(data) {
               char *end;
 
-              int cpu_temp = (int) strtol(data, &end, 10);
-              if (*end || errno == ERANGE) {
-                fprintf(stderr, "error parsing temperature: %s\n", data);
-                cpu_temp = -1;
-              }else {
-                cpu_temp /= 10;
+              for(char *d = strtok(data, ":");d != NULL;d = strtok(NULL, ":")) {
+                char *type = strtok(d, " ");
+                char *data2 = strtok(NULL, " ");
+                if(!strncasecmp("NaN", data2, 3)) continue;
+                int i = (int) strtol(data2, &end, 10);
+                if (*end || errno == ERANGE) {
+                  log_warn("in network_func: error parsing integer: %s\n", d);
+                  continue;
+                }else {
+                  i /= 10;
+                }
+
+                if(!strcasecmp("cpu", type) {
+                  if(asprintf(&text, "%sCPU: \t%.1f'C\n", text, (float)(i)/10.0f) < 0) {
+                    log_warn("in network_func: asprintf failed: %s", strerror(errno));
+                    free(text);
+                    continue;
+                  }
+                }else if(!strcasecmp("out", type) {
+                  if(asprintf(&text, "%sOUTSIDE: \t%.1f'C\n", text, (float)(i)/10.0f) < 0) {
+                    log_warn("in network_func: asprintf failed: %s", strerror(errno));
+                    free(text);
+                    continue;
+                  }
+                }
               }
-              _log_debug("caught event templog (%d C)", cpu_temp);
+              _log_debug("caught event templog (%s)", data);
             }else {
-              _log_debug("caught event templog\n");
+              continue;
+            }
+
+            if(text == NULL || text[0] == '\0') {
+              free(text);
               continue;
             }
 
@@ -387,17 +411,18 @@ void *network_func(void *param) {
               log_error("in network_func: failed to open subtitles hook for writing");
             }else {
               fprintf(subtitles,
-                "text=CPU %.1f'C\n"
+                "text=%s\n"
                 "font_name=FreeMono:style=Bold\n"
                 "pt=20\n"
                 "layout_align=top,left\n"
                 "text_align=left\n"
                 "horizontal_margin=30\n"
                 "vertical_margin=30\n"
-                "duration=0", cpu_temp);
+                "duration=0", text);
               fclose(subtitles);
             }
-          }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
+            free(text);
+          }else if(!strncasecmp("subscribed", buf, len)) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
             if(len < 0) {

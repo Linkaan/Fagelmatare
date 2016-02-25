@@ -145,7 +145,7 @@ event_t *ehandler_insert(char *type) {
     tmp = realloc(events, esize * sizeof(event_t*));
     if(tmp == NULL) {
       --esize;
-      errno = ENOMEM;
+      errno = ENOMEM; // you don't have to set this
       return NULL;
     }else {
       events = tmp;

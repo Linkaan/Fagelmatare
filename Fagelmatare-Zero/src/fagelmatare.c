@@ -67,6 +67,7 @@ static sem_t cleanup_done;
 static int is_atexit_enabled;
 
 void *network_func	(void *param);
+int send_issue      (char **, struct config *, char *);
 
 void die		        (int sig);
 void quit           (int sig);
@@ -299,7 +300,10 @@ void *network_func(void *param) {
           }else if(!strncasecmp("temp", buf, strlen(buf))) {
             strtok(buf, ":");
             char *data = strtok(NULL, ":");
-            char *data2;
+            char *issue;
+            char *out_temp;
+
+            send_issue(&out_temp, userdata->configs, "1;temperature");
             if(data) {
               char *end;
 
@@ -310,17 +314,19 @@ void *network_func(void *param) {
               }else {
                 cpu_temp /= 10;
               }
-              _log_debug("caught event temp (%d C)", cpu_temp);
-              len = asprintf(&data2, "%s", data);
-              if(len < 0) {
-                log_error("in network_func: asprintf error: %s\n", strerror(errno));
-                continue;
-              }
-              send_event(userdata->configs, "templog", data2);
-              free(data2);
+              _log_debug("caught event temp (%d C)\n", cpu_temp);
             }else {
               _log_debug("caught event temp\n");
-              send_event(userdata->configs, "templog");
+            }
+            len = asprintf(&issue, "/E/templog:cpu %s,out %s", data ? data : "NaN",
+                                                       out_temp ? out_temp : "NaN");
+            if(len < 0) {
+              log_error("in network_func: asprintf error: %s\n", strerror(errno));
+              continue;
+            }
+
+            if(send_issue(NULL, userdata->configs, issue) != 0) {
+              log_error("in network_func: failed to send issue: %s\n", issue);
             }
           }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
@@ -368,14 +374,18 @@ void *network_func(void *param) {
   return NULL;
 }
 
-int send_event(struct config *configs, char *event, char *data) {
+int send_issue(char **response, struct config *configs, char *issue) {
   int fd, rc, len;
-  char *msg;
   struct sockaddr_in addr;
+  char buf[BUFSIZ];
+  char *tmp, *recv;
   socklen_t addrlen;
+  size_t total_size, offset;
+
+  if(issue == NULL || issue[0] == '\0') return 0;
 
   if((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-    log_error("in send_event: socket error: %s\n", strerror(errno));
+    log_error("in send_issue: socket error: %s\n", strerror(errno));
     return 1;
   }
 
@@ -386,32 +396,51 @@ int send_event(struct config *configs, char *event, char *data) {
   addrlen = sizeof(struct sockaddr_in);
 
   if(connect(fd, (struct sockaddr*) &addr, addrlen) == -1) {
-    log_error("in send_event: connect error: %s\n", strerror(errno));
+    log_error("in send_issue: connect error: %s\n", strerror(errno));
     close(fd);
     return 1;
   }
 
-  if(data) {
-    len = asprintf(&msg, "/E/%s:%s", event, data);
-  }else {
-    len = asprintf(&msg, "/E/%s", event);
-  }
-  if(len < 0) {
-    log_error("in send_event: asprintf error: %s\n", strerror(errno));
-    close(sockfd);
-    free(msg);
-    return 1;
-  }
-  if((rc = send(fd, msg, len, MSG_NOSIGNAL)) != len) {
-    if(rc > 0) log_error("in send_event: partial write (%d of %d)\n", rc, len);
+  if((rc = send(fd, issue, len, MSG_NOSIGNAL)) != len) {
+    if(rc > 0) log_error("in send_issue: partial write (%d of %d)\n", rc, len);
     else {
-      log_error("in send_event: send error: %s\n", strerror(errno));
+      log_error("in send_issue: send error: %s\n", strerror(errno));
       close(fd);
-      free(msg);
       return 1;
     }
   }
-  free(msg);
+
+  if(response == NULL) {
+    close(fd);
+    return 0;
+  }
+
+  while((rc = recv(s, buf, BUFSIZ-1, 0)) > 0) {
+    buf[rc] = '\0';
+    total_size += rc+1;
+    tmp = realloc(recv, total_size * sizeof(char));
+    if(tmp == NULL) {
+      log_error("in send_issue: realloc error: %s\n", strerror(errno));
+      free(recv);
+      close(fd);
+      return 1;
+    }else {
+      recv = tmp;
+    }
+    memcpy(recv + offset, buf, rc+1);
+    offset += strnlen(buf, rc);
+  }
+  if(rc == 0) {
+    close(fd);
+    return 0;
+  }else if(rc < 0) {
+    log_error("in send_issue: send error: %s\n", strerror(errno));
+    free(recv);
+    close(fd);
+    return 1;
+  }
+  *response = recv;
+
   close(fd);
   return 0;
 }
