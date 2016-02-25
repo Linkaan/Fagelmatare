@@ -362,8 +362,10 @@ void *network_func(void *param) {
         }
         size_t len = strlen(buf);
         memmove(buf, buf+3, len - 3 + 1);
+        char *event = strtok(buf, ":");
+        char *data = strtok(NULL, ":");
         for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
-          if(!strncasecmp("templog", buf, memchr(buf, ':', len))) {
+          if(!strncasecmp("templog", event, len)) {
             strtok(buf, ":");
             char *data = strtok(NULL, ":");
             char *text;
@@ -422,7 +424,7 @@ void *network_func(void *param) {
               fclose(subtitles);
             }
             free(text);
-          }else if(!strncasecmp("subscribed", buf, len)) {
+          }else if(!strncasecmp("subscribed", event, len)) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
             if(len < 0) {

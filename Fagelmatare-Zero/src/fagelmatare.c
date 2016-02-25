@@ -288,8 +288,10 @@ void *network_func(void *param) {
         }
         size_t len = strlen(buf);
         memmove(buf, buf+3, len - 3 + 1);
+        char *event = strtok(buf, ":");
+        char *data = strtok(NULL, ":");
         for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
-          if(!strncasecmp("rain", buf, strlen(buf))) {
+          if(!strncasecmp("rain", event, len)) {
             rawtime = malloc(sizeof(time_t));
             if(rawtime == NULL) {
               log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
@@ -297,9 +299,7 @@ void *network_func(void *param) {
             }
             time(rawtime);
             log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "rain\n");
-          }else if(!strncasecmp("temp", buf, strlen(buf))) {
-            strtok(buf, ":");
-            char *data = strtok(NULL, ":");
+          }else if(!strncasecmp("temp", event, len)) {
             char *issue;
             char *out_temp;
 
@@ -328,7 +328,7 @@ void *network_func(void *param) {
             if(send_issue(NULL, userdata->configs, issue) != 0) {
               log_error("in network_func: failed to send issue: %s\n", issue);
             }
-          }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
+          }else if(!strncasecmp("subscribed", event, len)) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
             if(len < 0) {
