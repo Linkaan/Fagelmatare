@@ -64,7 +64,7 @@ void *queue_func(void *param) {
 
   while(!need_quit(&ehandler_mutex)) {
     if((ee = lstack_pop(&event_queue)) != NULL) {
-      pthread_mutex_lock(ee->event->mxt);
+      pthread_mutex_lock(&ee->event->mxt);
 
       if(ee->data) {
         len = asprintf(&str, "/E/%s:%s", ee->event->type, ee->data);
@@ -74,7 +74,7 @@ void *queue_func(void *param) {
       if(len < 0) {
         log_error("in queue_func: asprintf error: %s\n", strerror(errno));
         free(ee->data);
-        pthread_mutex_unlock(ee->event->mxt);
+        pthread_mutex_unlock(&ee->event->mxt);
         free(str);
         continue;
       }
@@ -94,7 +94,7 @@ void *queue_func(void *param) {
         }
       }
       free(ee->data);
-      pthread_mutex_unlock(ee->event->mxt);
+      pthread_mutex_unlock(&ee->event->mxt);
       free(str);
     }
     usleep(50000);
@@ -145,7 +145,6 @@ event_t *ehandler_insert(char *type) {
     tmp = realloc(events, esize * sizeof(event_t*));
     if(tmp == NULL) {
       --esize;
-      errno = ENOMEM; // you don't have to set this
       return NULL;
     }else {
       events = tmp;
@@ -166,15 +165,15 @@ event_t *ehandler_insert(char *type) {
   }
   ++esize;
 
-  pthread_mutex_init(events[esize-1]->mxt, NULL);
-  pthread_mutex_lock(events[esize-1]->mxt);
+  pthread_mutex_init(&events[esize-1]->mxt, NULL);
+  pthread_mutex_lock(&events[esize-1]->mxt);
   events[esize-1]->type = strdup(type);
   events[esize-1]->ssize = 0;
   events[esize-1]->subscribers = malloc(sizeof(int));
   if(events[esize-1]->subscribers != NULL) {
     events[esize-1]->cap = 1;
   }
-  pthread_mutex_unlock(events[esize-1]->mxt);
+  pthread_mutex_unlock(&events[esize-1]->mxt);
   return events[esize-1];
 }
 
@@ -182,18 +181,14 @@ event_t *ehandler_get(char *type) {
   int i;
 
   for(i = 0;i < esize;i++) {
-    pthread_mutex_lock(events[i]->mxt);
+    pthread_mutex_lock(&events[i]->mxt);
     if(!strncasecmp(type, events[i]->type, strlen(events[i]->type))) {
-      pthread_mutex_unlock(events[i]->mxt);
+      pthread_mutex_unlock(&events[i]->mxt);
       return events[i];
     }
-    pthread_mutex_unlock(events[i]->mxt);
+    pthread_mutex_unlock(&events[i]->mxt);
   }
   return NULL;
-}
-
-int ehandler_handle(event_t *event) {
-  return ehandler_handle(event, NULL);
 }
 
 int ehandler_handle(event_t *event, char *data) {
@@ -202,11 +197,11 @@ int ehandler_handle(event_t *event, char *data) {
     return -1;
   }
 
-  event_e->event = event;
+  ee->event = event;
   if(data) {
-    event_e->data = strdup(data);
+    ee->data = strdup(data);
   }else {
-    event_e->data = NULL;
+    ee->data = NULL;
   }
 
   if(lstack_push(&event_queue, ee) != 0) {
@@ -269,14 +264,14 @@ int ehandler_subscribe(char *type, int socket) {
     return -1;
   }
 
-  pthread_mutex_lock(event->mxt);
+  pthread_mutex_lock(&event->mxt);
   if(++(event->ssize) > event->cap) {
     tmp = realloc(event->subscribers, event->ssize * sizeof(int));
     if(tmp == NULL) {
       --(event->ssize);
       _log_debug("closing connection to socket %d because out of memory\n", socket);
       close(socket);
-      pthread_mutex_unlock(event->mxt);
+      pthread_mutex_unlock(&event->mxt);
       return ENOMEM;
     }else {
       event->subscribers = tmp;
@@ -285,7 +280,7 @@ int ehandler_subscribe(char *type, int socket) {
   }
 
   (event->subscribers)[event->ssize-1] = socket;
-  pthread_mutex_unlock(event->mxt);
+  pthread_mutex_unlock(&event->mxt);
   return 0;
 }
 
@@ -298,7 +293,7 @@ void ehandler_cleanup() {
   lstack_free(&event_queue);
 
   for(i = 0;i < esize;i++) {
-    pthread_mutex_lock(events[i]->mxt);
+    pthread_mutex_lock(&events[i]->mxt);
     for(j = 0;j < events[i]->ssize;j++) {
       if((events[i]->subscribers)[j]) {
         _log_debug("closing connection to socket %d because cleanup.\n", (events[i]->subscribers)[j]);
@@ -307,8 +302,8 @@ void ehandler_cleanup() {
     }
     free(events[i]->subscribers);
     free(events[i]->type);
-    pthread_mutex_unlock(events[i]->mxt);
-    pthread_mutex_destroy(events[i]->mxt);
+    pthread_mutex_unlock(&events[i]->mxt);
+    pthread_mutex_destroy(&events[i]->mxt);
     free(events[i]);
   }
   free(events);

@@ -25,6 +25,7 @@
 
 #include <sys/select.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <stdio.h>
@@ -32,6 +33,8 @@
 #include <stdarg.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <time.h>
 
 #define SOCKET_PATH "/tmp/shandler.sock"
@@ -39,6 +42,7 @@
 int main(int argc, char **argv) {
   int fd, rc, len;
   int cpu_temp;
+  char buf[8];
   char *msg;
   struct sockaddr_un addr;
   socklen_t addrlen;
@@ -81,9 +85,9 @@ int main(int argc, char **argv) {
     exit(EXIT_FAILURE);
   }
   if(cpu_temp != -1) {
-    len = asprintf(&msg, "/E/%s:%d", argv[1], cpu_temp);
+    len = asprintf(&msg, "/E/temp:%d", cpu_temp);
   }else {
-    len = asprintf(&msg, "/E/%s", argv[1]);
+    len = asprintf(&msg, "/E/temp");
   }
   if(len < 0) {
     perror("asprintf failed");

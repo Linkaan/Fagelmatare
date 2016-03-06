@@ -243,28 +243,26 @@ int main(void) {
   sem_post(&cleanup_done);
 }
 
-void *network_func(void *param) {
+void /**__attribute__((optimize("O0")))*/ *network_func(void *param) {
   struct user_data *userdata = param;
   int sockfd, rc, len;
   int valopt;
   int flags;
   char *msg, buf[144];
-  struct sockaddr_in addr;
+  struct sockaddr_un addr;
   socklen_t addrlen;
   fd_set myset;
   struct timeval tv;
   struct pollfd p[2];
-  time_t *rawtime;
 
   memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = inet_addr(userdata->configs->inet_addr);
-  addr.sin_port = htons(userdata->configs->inet_port);
-  addrlen = sizeof(struct sockaddr_in);
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, userdata->configs->sock_path, sizeof(addr.sun_path)-1);
+  addrlen = sizeof(struct sockaddr_un);
 
   ConnectToPeer:
-  if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
-    log_error("in network_func: socket(AF_INET, SOCK_STREAM, 0) error: %s\n", strerror(errno));
+  if((sockfd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+    log_error("in network_func: socket(AF_UNIX, SOCK_STREAM, 0) error: %s\n", strerror(errno));
     log_exit();
     exit(1);
   }
@@ -360,45 +358,116 @@ void *network_func(void *param) {
           log_error("in network_func: read string violating protocol (%s)\n", buf);
           continue;
         }
-        size_t len = strlen(buf);
-        memmove(buf, buf+3, len - 3 + 1);
-        char *event = strtok(buf, ":");
-        char *data = strtok(NULL, ":");
-        for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
+
+        char *end_event;
+        for(char *p = strtok_r(buf, "/E/", &end_event);p != NULL;p = strtok_r(NULL, "/E/", &end_event)) {
+          char *end_buf;
+
+          size_t len = strlen(buf); // handle this better!!!
+          memmove(buf, buf+3, len - 3 + 1);
+          char *event = strtok_r(buf, ":", &end_buf);
+          char *data = strtok_r(NULL, ":", &end_buf);
           if(!strncasecmp("templog", event, len)) {
             strtok(buf, ":");
-            char *data = strtok(NULL, ":");
-            char *text;
+            size_t text_size = 0;
+            char *text = NULL;
             if(data) {
-              char *end;
+              char *end, *end_data;
 
-              for(char *d = strtok(data, ":");d != NULL;d = strtok(NULL, ":")) {
-                char *type = strtok(d, " ");
-                char *data2 = strtok(NULL, " ");
+              for(char *d = strtok_r(data, ",", &end_data);d != NULL;d = strtok_r(NULL, ",", &end_data)) {
+                char *end_delim;
+
+                char *type = strtok_r(d, " ", &end_delim);
+                char *data2 = strtok_r(NULL, " ", &end_delim);
                 if(!strncasecmp("NaN", data2, 3)) continue;
                 int i = (int) strtol(data2, &end, 10);
                 if (*end || errno == ERANGE) {
                   log_warn("in network_func: error parsing integer: %s\n", d);
                   continue;
-                }else {
-                  i /= 10;
                 }
 
-                if(!strcasecmp("cpu", type) {
-                  if(asprintf(&text, "%sCPU: \t%.1f'C\n", text, (float)(i)/10.0f) < 0) {
-                    log_warn("in network_func: asprintf failed: %s", strerror(errno));
-                    free(text);
-                    continue;
+                float f = (float)(i)/10.0f;
+
+                if(!strcasecmp("cpu", type)) {
+                  if(!text) {
+                    ssize_t length = snprintf(NULL, 0, "CPU: \\t%.1f'C\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+                    text = malloc((length + 1) * sizeof(char));
+                    if(snprintf(text, length+1, "CPU: \\t%.1f'C\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size = length;
+                  }else {
+                    char *tmp;
+
+                    ssize_t length = snprintf(NULL, 0, "CPU: \\t%.1f'C\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+
+                    tmp = realloc(text, (text_size + length + 1) * sizeof(char));
+                    if(tmp == NULL) {
+                      log_error("in network_func: realloc error: %s\n", strerror(errno));
+                      free(text);
+                      continue;
+                    }else {
+                      text = tmp;
+                    }
+
+                    if(snprintf(text + text_size * sizeof(char), length+1, "CPU: \\t%.1f'C\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size += length;
                   }
-                }else if(!strcasecmp("out", type) {
-                  if(asprintf(&text, "%sOUTSIDE: \t%.1f'C\n", text, (float)(i)/10.0f) < 0) {
-                    log_warn("in network_func: asprintf failed: %s", strerror(errno));
-                    free(text);
-                    continue;
+                }else if(!strcasecmp("out", type)) {
+                  if(!text) {
+                    ssize_t length = snprintf(NULL, 0, "OUTSIDE: \\t%.1f'C\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+                    text = malloc((length + 1) * sizeof(char));
+                    if(snprintf(text, length+1, "OUTSIDE: \\t%.1f'C\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size = length;
+                  }else {
+                    char *tmp;
+
+                    ssize_t length = snprintf(NULL, 0, "OUTSIDE: \\t%.1f'C\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+
+                    tmp = realloc(text, (text_size + length + 1) * sizeof(char));
+                    if(tmp == NULL) {
+                      log_error("in network_func: realloc error: %s\n", strerror(errno));
+                      free(text);
+                      continue;
+                    }else {
+                      text = tmp;
+                    }
+
+                    if(snprintf(text + text_size * sizeof(char), length+1, "OUTSIDE: \\t%.1f'C\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size += length;
                   }
                 }
               }
-              _log_debug("caught event templog (%s)", data);
             }else {
               continue;
             }

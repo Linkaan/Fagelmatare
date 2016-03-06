@@ -51,6 +51,10 @@
 #define SERVO_END_POS    30
 #define SERVO_SPEED       5
 
+#define OPEN_PIN  2
+#define CLOSE_PIN 3
+#define IR_PIN    4
+
 #define PING_EVENT       10 // How frequently are we going to send a serie of pings to check for rain. Value of 10 would be every 10 * PING_SPEED milliseconds.
 #define PING_SPEED      100 // How frequently are we going to send out a ping (in milliseconds). 50ms would be 20 times a second.
 
@@ -70,16 +74,26 @@ float avg_dt = 0.0f;
 float dt_hysteresis = 1.0f;
 #endif
 int duration = 7.222222*SERVO_BEGIN_POS+900;
+int last_ir_value = LOW;
 
 /*
  * In the setup function we initialize the serial bus and prepare the servo.
  */
 void setup() {
-  Serial.begin(9600);
+  pinMode(OPEN_PIN, OUTPUT); 
+  digitalWrite(OPEN_PIN, LOW);
+  pinMode(CLOSE_PIN, OUTPUT);
+  digitalWrite(CLOSE_PIN, LOW);  
+  pinMode(IR_PIN, INPUT);
+  digitalWrite(CLOSE_PIN, HIGH);
+  delay(500);
+  digitalWrite(CLOSE_PIN, LOW);  
+  
   pinMode(SERVO_PIN, OUTPUT);
 #if defined(PING_ENABLED)
   pingtimer = millis(); // Start ping timer now.
 #endif
+  Serial.begin(9600);
 }
 
 /*
@@ -235,6 +249,25 @@ void loop() {
     delayMicroseconds(duration);
     digitalWrite(SERVO_PIN, LOW);
     sei();
+    
+    int val = digitalRead(IR_PIN);
+    if(val == HIGH && last_ir_value == LOW) {
+      digitalWrite(CLOSE_PIN, HIGH);
+      delay(500);
+      digitalWrite(CLOSE_PIN, LOW);
+      Serial.print("/E/");
+      Serial.print("close_shutter");
+      Serial.print('\0');   
+      last_ir_value = HIGH;
+    }else if(val == LOW && last_ir_value == HIGH) {
+      digitalWrite(OPEN_PIN, HIGH);
+      delay(500);
+      digitalWrite(OPEN_PIN, LOW);
+      Serial.print("/E/");
+      Serial.print("open_shutter");
+      Serial.print('\0');  
+      last_ir_value = LOW; 
+    }
   }
   if(Serial.available() > 0) {
     String str = Serial.readStringUntil('\0');

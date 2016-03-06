@@ -46,6 +46,8 @@
 #include <errno.h>
 #include <config.h>
 #include <log.h>
+#include <my_global.h>
+#include <mysql.h>
 
 #define CONFIG_PATH "/etc/fagelmatare.conf"
 
@@ -304,20 +306,7 @@ void *network_func(void *param) {
             char *out_temp;
 
             send_issue(&out_temp, userdata->configs, "1;temperature");
-            if(data) {
-              char *end;
 
-              int cpu_temp = (int) strtol(data, &end, 10);
-              if (*end || errno == ERANGE) {
-                fprintf(stderr, "error parsing temperature: %s\n", data);
-                cpu_temp = -1;
-              }else {
-                cpu_temp /= 10;
-              }
-              _log_debug("caught event temp (%d C)\n", cpu_temp);
-            }else {
-              _log_debug("caught event temp\n");
-            }
             len = asprintf(&issue, "/E/templog:cpu %s,out %s", data ? data : "NaN",
                                                        out_temp ? out_temp : "NaN");
             if(len < 0) {
@@ -327,6 +316,48 @@ void *network_func(void *param) {
 
             if(send_issue(NULL, userdata->configs, issue) != 0) {
               log_error("in network_func: failed to send issue: %s\n", issue);
+            }
+
+            { // temp block which logs to database.
+              MYSQL *mysql;
+              char *query;
+
+              mysql = mysql_init(NULL);
+              if(NULL == mysql) {
+                fprintf(stderr, "%s\n", mysql_error(mysql));
+                break;
+              }
+
+              if(NULL == mysql_real_connect(mysql, userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd, "fagelmatare", 0, NULL, 0)) {
+                mysql_close(mysql);
+                fprintf(stderr, "%s\n", mysql_error(mysql));
+                break;
+              }
+
+              asprintf(&query,
+                  "INSERT INTO `temperatur` ("
+                  "`source`,`temperature`, `datetime`"
+                  ") VALUES ("
+                  "'Outside', '%s', NOW()"
+                  ")", out_temp);
+
+              if(mysql_query(mysql, query)) {
+                fprintf(stderr, "%s\n", mysql_error(mysql));
+              }
+              free(query);
+
+              asprintf(&query,
+                "INSERT INTO `temperatur` ("
+                "`source`,`temperature`, `datetime`"
+                ") VALUES ("
+                "'CPU', '%s', NOW()"
+                ")", data);
+
+              if(mysql_query(mysql, query)) {
+                fprintf(stderr, "%s\n", mysql_error(mysql));
+              }
+              free(query);
+              mysql_close(mysql);
             }
           }else if(!strncasecmp("subscribed", event, len)) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
@@ -378,7 +409,7 @@ int send_issue(char **response, struct config *configs, char *issue) {
   int fd, rc, len;
   struct sockaddr_in addr;
   char buf[BUFSIZ];
-  char *tmp, *recv;
+  char *tmp, *result;
   socklen_t addrlen;
   size_t total_size, offset;
 
@@ -391,8 +422,8 @@ int send_issue(char **response, struct config *configs, char *issue) {
 
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = inet_addr(userdata->configs->inet_addr);
-  addr.sin_port = htons(userdata->configs->inet_port);
+  addr.sin_addr.s_addr = inet_addr(configs->inet_addr);
+  addr.sin_port = htons(configs->inet_port);
   addrlen = sizeof(struct sockaddr_in);
 
   if(connect(fd, (struct sockaddr*) &addr, addrlen) == -1) {
@@ -401,6 +432,7 @@ int send_issue(char **response, struct config *configs, char *issue) {
     return 1;
   }
 
+  len = strlen(issue);
   if((rc = send(fd, issue, len, MSG_NOSIGNAL)) != len) {
     if(rc > 0) log_error("in send_issue: partial write (%d of %d)\n", rc, len);
     else {
@@ -415,32 +447,32 @@ int send_issue(char **response, struct config *configs, char *issue) {
     return 0;
   }
 
-  while((rc = recv(s, buf, BUFSIZ-1, 0)) > 0) {
+  total_size = 0;
+  offset = 0;
+  result = NULL;
+  while((rc = recv(fd, buf, BUFSIZ-1, 0)) > 0) {
     buf[rc] = '\0';
     total_size += rc+1;
-    tmp = realloc(recv, total_size * sizeof(char));
+    tmp = realloc(result, total_size * sizeof(char));
     if(tmp == NULL) {
       log_error("in send_issue: realloc error: %s\n", strerror(errno));
-      free(recv);
+      free(result);
       close(fd);
       return 1;
     }else {
-      recv = tmp;
+      result = tmp;
     }
-    memcpy(recv + offset, buf, rc+1);
+    memcpy(result + offset, buf, rc+1);
     offset += strnlen(buf, rc);
   }
-  if(rc == 0) {
-    close(fd);
-    return 0;
-  }else if(rc < 0) {
-    log_error("in send_issue: send error: %s\n", strerror(errno));
-    free(recv);
+  if(rc < 0) {
+    log_error("in send_issue: recv error: %s\n", strerror(errno));
+    free(result);
     close(fd);
     return 1;
   }
-  *response = recv;
-
+  *response = result;
+  
   close(fd);
   return 0;
 }
