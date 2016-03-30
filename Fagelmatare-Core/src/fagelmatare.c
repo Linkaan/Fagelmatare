@@ -390,13 +390,13 @@ void /**__attribute__((optimize("O0")))*/ *network_func(void *param) {
 
                 if(!strcasecmp("cpu", type)) {
                   if(!text) {
-                    ssize_t length = snprintf(NULL, 0, "CPU: \\t%.1f'C\\n", f);
+                    ssize_t length = snprintf(NULL, 0, "CPU \\t\\t%.1f'C\\n", f);
                     if(length < 0) {
                       log_warn("in network_func: snprintf failed: %s", strerror(errno));
                       continue;
                     }
                     text = malloc((length + 1) * sizeof(char));
-                    if(snprintf(text, length+1, "CPU: \\t%.1f'C\\n", f) < 0) {
+                    if(snprintf(text, length+1, "CPU \\t\\t%.1f'C\\n", f) < 0) {
                       log_warn("in network_func: snprintf failed: %s", strerror(errno));
                       free(text);
                       continue;
@@ -405,7 +405,7 @@ void /**__attribute__((optimize("O0")))*/ *network_func(void *param) {
                   }else {
                     char *tmp;
 
-                    ssize_t length = snprintf(NULL, 0, "CPU: \\t%.1f'C\\n", f);
+                    ssize_t length = snprintf(NULL, 0, "CPU \\t\\t%.1f'C\\n", f);
                     if(length < 0) {
                       log_warn("in network_func: snprintf failed: %s", strerror(errno));
                       continue;
@@ -420,7 +420,7 @@ void /**__attribute__((optimize("O0")))*/ *network_func(void *param) {
                       text = tmp;
                     }
 
-                    if(snprintf(text + text_size * sizeof(char), length+1, "CPU: \\t%.1f'C\\n", f) < 0) {
+                    if(snprintf(text + text_size * sizeof(char), length+1, "CPU \\t\\t%.1f'C\\n", f) < 0) {
                       log_warn("in network_func: snprintf failed: %s", strerror(errno));
                       free(text);
                       continue;
@@ -429,13 +429,13 @@ void /**__attribute__((optimize("O0")))*/ *network_func(void *param) {
                   }
                 }else if(!strcasecmp("out", type)) {
                   if(!text) {
-                    ssize_t length = snprintf(NULL, 0, "OUTSIDE: \\t%.1f'C\\n", f);
+                    ssize_t length = snprintf(NULL, 0, "OUTSIDE \\t%.1f'C\\n", f);
                     if(length < 0) {
                       log_warn("in network_func: snprintf failed: %s", strerror(errno));
                       continue;
                     }
                     text = malloc((length + 1) * sizeof(char));
-                    if(snprintf(text, length+1, "OUTSIDE: \\t%.1f'C\\n", f) < 0) {
+                    if(snprintf(text, length+1, "OUTSIDE \\t%.1f'C\\n", f) < 0) {
                       log_warn("in network_func: snprintf failed: %s", strerror(errno));
                       free(text);
                       continue;
@@ -444,7 +444,7 @@ void /**__attribute__((optimize("O0")))*/ *network_func(void *param) {
                   }else {
                     char *tmp;
 
-                    ssize_t length = snprintf(NULL, 0, "OUTSIDE: \\t%.1f'C\\n", f);
+                    ssize_t length = snprintf(NULL, 0, "OUTSIDE \\t%.1f'C\\n", f);
                     if(length < 0) {
                       log_warn("in network_func: snprintf failed: %s", strerror(errno));
                       continue;
@@ -459,7 +459,124 @@ void /**__attribute__((optimize("O0")))*/ *network_func(void *param) {
                       text = tmp;
                     }
 
-                    if(snprintf(text + text_size * sizeof(char), length+1, "OUTSIDE: \\t%.1f'C\\n", f) < 0) {
+                    if(snprintf(text + text_size * sizeof(char), length+1, "OUTSIDE \\t%.1f'C\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size += length;
+                  }
+                }else if(!strcasecmp("hpa", type)) {
+                  if(!text) {
+                    ssize_t length = snprintf(NULL, 0, "PRESSURE \\t%.1f hPa\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+                    text = malloc((length + 1) * sizeof(char));
+                    if(snprintf(text, length+1, "PRESSURE \\t%.1f hPa\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size = length;
+                  }else {
+                    char *tmp;
+
+                    ssize_t length = snprintf(NULL, 0, "PRESSURE \\t%.1f hPa\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+
+                    tmp = realloc(text, (text_size + length + 1) * sizeof(char));
+                    if(tmp == NULL) {
+                      log_error("in network_func: realloc error: %s\n", strerror(errno));
+                      free(text);
+                      continue;
+                    }else {
+                      text = tmp;
+                    }
+
+                    if(snprintf(text + text_size * sizeof(char), length+1, "PRESSURE \\t%.1f hPa\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size += length;
+                  }
+                }else if(!strcasecmp("in", type)) {
+                  if(!text) {
+                    ssize_t length = snprintf(NULL, 0, "INSIDE \\t%.1f'C\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+                    text = malloc((length + 1) * sizeof(char));
+                    if(snprintf(text, length+1, "INSIDE \\t%.1f'C\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size = length;
+                  }else {
+                    char *tmp;
+
+                    ssize_t length = snprintf(NULL, 0, "INSIDE \\t%.1f'C\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+
+                    tmp = realloc(text, (text_size + length + 1) * sizeof(char));
+                    if(tmp == NULL) {
+                      log_error("in network_func: realloc error: %s\n", strerror(errno));
+                      free(text);
+                      continue;
+                    }else {
+                      text = tmp;
+                    }
+
+                    if(snprintf(text + text_size * sizeof(char), length+1, "INSIDE \\t%.1f'C\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size += length;
+                  }
+                }else if(!strcasecmp("rh", type)) {
+                  if(!text) {
+                    ssize_t length = snprintf(NULL, 0, "HUMIDITY \\t%.1f %% rH\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+                    text = malloc((length + 1) * sizeof(char));
+                    if(snprintf(text, length+1, "HUMIDITY \\t%.1f %% rH\\n", f) < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      free(text);
+                      continue;
+                    }
+                    text_size = length;
+                  }else {
+                    char *tmp;
+
+                    ssize_t length = snprintf(NULL, 0, "HUMIDITY \\t%.1f %% rH\\n", f);
+                    if(length < 0) {
+                      log_warn("in network_func: snprintf failed: %s", strerror(errno));
+                      continue;
+                    }
+
+                    tmp = realloc(text, (text_size + length + 1) * sizeof(char));
+                    if(tmp == NULL) {
+                      log_error("in network_func: realloc error: %s\n", strerror(errno));
+                      free(text);
+                      continue;
+                    }else {
+                      text = tmp;
+                    }
+
+                    if(snprintf(text + text_size * sizeof(char), length+1, "HUMIDITY \\t%.1f %% rH\\n", f) < 0) {
                       log_warn("in network_func: snprintf failed: %s", strerror(errno));
                       free(text);
                       continue;

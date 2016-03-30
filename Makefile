@@ -27,10 +27,10 @@
 all: temperature.out send_serial.out send_event.out
 
 temperature.out : temperature.c
-	gcc -g -Wall -Werror `mysql_config --include` -D _GNU_SOURCE -o temperature.out temperature.c -lmysqlclient
+	gcc -g -Wall `mysql_config --include` -D _GNU_SOURCE -o temperature.out temperature.c -lmysqlclient
 
 send_serial.out : send_serial.c
-	gcc -g -Wall -Werror -o send_serial.out send_serial.c -D _GNU_SOURCE
+	gcc -g -Wall -o send_serial.out send_serial.c -D _GNU_SOURCE
 
 send_event.out : send_event.c
-	gcc -g -Wall -Werror -o send_event.out send_event.c -D _GNU_SOURCE
+	gcc -g -Wall -o send_event.out send_event.c -D _GNU_SOURCE

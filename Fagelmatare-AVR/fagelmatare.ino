@@ -80,15 +80,15 @@ int last_ir_value = LOW;
  * In the setup function we initialize the serial bus and prepare the servo.
  */
 void setup() {
-  pinMode(OPEN_PIN, OUTPUT); 
+  pinMode(OPEN_PIN, OUTPUT);
   digitalWrite(OPEN_PIN, LOW);
   pinMode(CLOSE_PIN, OUTPUT);
-  digitalWrite(CLOSE_PIN, LOW);  
+  digitalWrite(CLOSE_PIN, LOW);
   pinMode(IR_PIN, INPUT);
   digitalWrite(CLOSE_PIN, HIGH);
   delay(500);
-  digitalWrite(CLOSE_PIN, LOW);  
-  
+  digitalWrite(CLOSE_PIN, LOW);
+
   pinMode(SERVO_PIN, OUTPUT);
 #if defined(PING_ENABLED)
   pingtimer = millis(); // Start ping timer now.
@@ -249,7 +249,7 @@ void loop() {
     delayMicroseconds(duration);
     digitalWrite(SERVO_PIN, LOW);
     sei();
-    
+
     int val = digitalRead(IR_PIN);
     if(val == HIGH && last_ir_value == LOW) {
       digitalWrite(CLOSE_PIN, HIGH);
@@ -257,7 +257,7 @@ void loop() {
       digitalWrite(CLOSE_PIN, LOW);
       Serial.print("/E/");
       Serial.print("close_shutter");
-      Serial.print('\0');   
+      Serial.print('\0');
       last_ir_value = HIGH;
     }else if(val == LOW && last_ir_value == HIGH) {
       digitalWrite(OPEN_PIN, HIGH);
@@ -265,8 +265,8 @@ void loop() {
       digitalWrite(OPEN_PIN, LOW);
       Serial.print("/E/");
       Serial.print("open_shutter");
-      Serial.print('\0');  
-      last_ir_value = LOW; 
+      Serial.print('\0');
+      last_ir_value = LOW;
     }
   }
   if(Serial.available() > 0) {
@@ -279,7 +279,12 @@ void loop() {
     if(str == "temperature") {
       float temperature = measure_median_temperature();
       Serial.print("/R/");
-      Serial.print(round(temperature*10));
+      /*
+       * Reference: datasheet DS18B20.pdf (January 2015), datasheets.maximintegrated.com
+       * According to sensor DC Electrical Characteristics: see datasheet table 1
+       * For thermometer in range -10 to 85 °C ±0.5
+       */
+      Serial.print(round(temperature/0.5)*20);
       Serial.print('\0');
       return;
     }

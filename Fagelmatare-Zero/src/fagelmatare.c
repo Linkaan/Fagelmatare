@@ -45,6 +45,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <config.h>
+#include <sensors.h>
 #include <log.h>
 #include <my_global.h>
 #include <mysql.h>
@@ -67,6 +68,7 @@ static sem_t wakeup_main;
 static sem_t cleanup_done;
 
 static int is_atexit_enabled;
+static int is_sensors_enabled;
 
 void *network_func	(void *param);
 int send_issue      (char **, struct config *, char *);
@@ -101,6 +103,13 @@ int main(void) {
   if(log_init(&userdata_log)) {
     printf("error initalizing log thread: %s\n", strerror(errno));
     exit(1);
+  }
+
+  if(sensors_init()) {
+    log_error("error initalizing sensors library.");
+    is_sensors_enabled = 0;
+  }else {
+    is_sensors_enabled = 1;
   }
 
   /* init user_data struct used by network_func */
@@ -249,7 +258,7 @@ void *network_func(void *param) {
     }
   }
 
-  len = asprintf(&msg, "/S/rain|temp");
+  len = asprintf(&msg, "/S/rain|temp|open_shutter|close_shutter");
   if(len < 0) {
     log_error("in network_func: asprintf error: %s\n", strerror(errno));
     close(sockfd);
@@ -301,16 +310,68 @@ void *network_func(void *param) {
             }
             time(rawtime);
             log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "rain\n");
+          }else if(!strncasecmp("open_shutter", event, len)) {
+            rawtime = malloc(sizeof(time_t));
+            if(rawtime == NULL) {
+              log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
+              continue;
+            }
+            time(rawtime);
+            log_msg_level(LOG_LEVEL_INFO, rawtime, "shutter", "open\n");
+          }else if(!strncasecmp("close_shutter", event, len)) {
+            rawtime = malloc(sizeof(time_t));
+            if(rawtime == NULL) {
+              log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
+              continue;
+            }
+            time(rawtime);
+            log_msg_level(LOG_LEVEL_INFO, rawtime, "shutter", "close\n");
           }else if(!strncasecmp("temp", event, len)) {
+            struct IMUData imu_data;
             char *issue;
             char *out_temp;
+            char *hpa, *in, *rh;
+            int sensors_avail;
 
             send_issue(&out_temp, userdata->configs, "1;temperature");
 
-            len = asprintf(&issue, "/E/templog:cpu %s,out %s", data ? data : "NaN",
-                                                       out_temp ? out_temp : "NaN");
+            if(!is_sensors_enabled && sensors_init()) { // try again to initialize sensor library
+              is_sensors_enabled = 1;
+            }
+
+            if(is_sensors_enabled) {
+              memset(&imu_data, 0, sizeof(struct IMUData));
+              if(sensors_grab(&imu_data, 8, 1000)) { // grab 8 samples with 1000 µs inbetween
+                log_warn("in network_func: failed to grab sensor data: %s\n", strerror(errno));
+              }else {
+                sensors_avail = 1;
+              }
+            }
+
+            if(sensors_avail) {
+              if(asprintf(&hpa, "%d", (int)(imu_data.pressure * 10.0f)) < 0) {
+                free(hpa);
+                hpa = NULL;
+              }
+              if(asprintf(&in, "%d", (int)(imu_data.temperature * 10.0f)) < 0) {
+                free(in);
+                in = NULL;
+              }
+              if(asprintf(&rh, "%d", (int)(imu_data.humidity * 10.0f)) < 0) {
+                free(rh);
+                rh = NULL;
+              }
+            }
+
+            len = asprintf(&issue, "/E/templog:cpu %s,out %s,in %s,hpa %s,rh %s",
+                  data ? data : "NaN",
+                  out_temp ? out_temp : "NaN",
+                  in ? in : "NaN",
+                  hpa ? hpa : "NaN",
+                  rh ? rh : "NaN");
             if(len < 0) {
               log_error("in network_func: asprintf error: %s\n", strerror(errno));
+              free(issue);
               continue;
             }
 
@@ -318,7 +379,11 @@ void *network_func(void *param) {
               log_error("in network_func: failed to send issue: %s\n", issue);
             }
 
-            { // temp block which logs to database.
+            /*
+             * Temporary solution which logs to database
+             * Emphasis on temporary!
+             */
+            {
               MYSQL *mysql;
               char *query;
 
@@ -335,30 +400,27 @@ void *network_func(void *param) {
               }
 
               asprintf(&query,
-                  "INSERT INTO `temperatur` ("
-                  "`source`,`temperature`, `datetime`"
+                  "INSERT INTO `sensors` ("
+                  "`cpu`, `outside`, `inside`, `pressure`, `humidity`"
                   ") VALUES ("
-                  "'Outside', '%s', NOW()"
-                  ")", out_temp);
+                  "'%s', '%s', '%s', '%s', '%s', NOW()"
+                  ")", data ? data : "",
+                       out_temp ? out_temp : "",
+                       in ? in : "",
+                       hpa ? hpa : "",
+                       rh ? rh : "");
 
               if(mysql_query(mysql, query)) {
                 fprintf(stderr, "%s\n", mysql_error(mysql));
               }
-              free(query);
-
-              asprintf(&query,
-                "INSERT INTO `temperatur` ("
-                "`source`,`temperature`, `datetime`"
-                ") VALUES ("
-                "'CPU', '%s', NOW()"
-                ")", data);
-
-              if(mysql_query(mysql, query)) {
-                fprintf(stderr, "%s\n", mysql_error(mysql));
-              }
-              free(query);
               mysql_close(mysql);
             }
+
+            free(out_temp);
+            free(hpa);
+            free(in);
+            free(rh);
+            free(issue);
           }else if(!strncasecmp("subscribed", event, len)) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
@@ -472,7 +534,7 @@ int send_issue(char **response, struct config *configs, char *issue) {
     return 1;
   }
   *response = result;
-  
+
   close(fd);
   return 0;
 }
