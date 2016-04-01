@@ -1,6 +1,6 @@
 /*
  *  fagelmatare.c
- *    Handle temperature/pressure/humidity sensor readings using sensehat libraries
+ *    Log temperature/pressure/humidity sensor measurements
  *    Copyright (C) 2015 Linus Styrén
  *****************************************************************************
  *  This file is part of Fågelmataren:
