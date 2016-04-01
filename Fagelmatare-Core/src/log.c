@@ -120,6 +120,7 @@ void *log_func(void *param) {
         pthread_mutex_unlock(&mxs);
       }
       if((err = log_to_database(ent)) != 0) {
+        disconnect();
         if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
           pthread_mutex_lock(&mxs);
           fprintf(log_stream, "could not connect to database (%d)\n", err);
@@ -149,6 +150,7 @@ void *log_func(void *param) {
       pthread_mutex_unlock(&mxs);
     }
     if((err = log_to_database(ent)) != 0) {
+      disconnect();
       if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
         pthread_mutex_lock(&mxs);
         fprintf(log_stream, "could not connect to database (%d)\n", err);

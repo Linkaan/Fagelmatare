@@ -25,42 +25,63 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
+#include <time.h>
 #include <pthread.h>
 #include <mysql.h>
 #include <my_global.h>
 #include <log_entry.h>
 
-#define QUERY_BUFFER_SIZE 589
-
 static MYSQL *mysql = NULL;
 static MYSQL_STMT *stmt = NULL;
+static char *stmt_prepare;
+static int len;
+
+static void log_msg_vargs(const char *format, const va_list args) {
+  char buffer[20];
+  time_t rawtime;
+
+  time(&rawtime);
+  strftime(buffer, 20, "%F %H:%M:%S", localtime(&rawtime));
+  fprintf(stdout, "%s : ", buffer);
+  vfprintf(stdout, format, args);
+}
+
+static void log_msg(const char *format, ...) {
+  va_list args;
+  va_start(args, format);
+  log_msg_vargs(format, args);
+  va_end(args);
+}
 
 int connect_to_database(const char *address, const char *user, const char *pwd) {
-  char query[QUERY_BUFFER_SIZE];
-
   if(!mysql) mysql = mysql_init(NULL);
   if(!mysql) {
-    printf("in dblogger:connect_to_database: mysql_init failed: %s\n", mysql_error(mysql));
+    log_msg("in dblogger:connect_to_database: mysql_init failed: %s\n", mysql_error(mysql));
     return mysql_errno(mysql);
   }
 
   mysql_options(mysql, MYSQL_OPT_RECONNECT, &(int){ 1 });
   if(!mysql_real_connect(mysql, address, user, pwd, "fagelmatare", 0, NULL, 0)) {
-    printf("in dblogger:connect_to_database: mysql_real_connect failed: %s\n", mysql_error(mysql));
+    log_msg("in dblogger:connect_to_database: mysql_real_connect failed: %s\n", mysql_error(mysql));
     return mysql_errno(mysql);
   }
 
   stmt = mysql_stmt_init(mysql);
   if(!stmt) {
-    printf("in dblogger:connect_to_database: mysql_stmt_init failed: %s\n", strerror(CR_OUT_OF_MEMORY));
+    log_msg("in dblogger:connect_to_database: mysql_stmt_init failed: %s\n", strerror(CR_OUT_OF_MEMORY));
     return CR_OUT_OF_MEMORY;
   }
 
-  strcpy(query, "INSERT INTO `logg` (severity,event,source,datetime)"
-						    "VALUES(?,?,?,?)");
-  if(mysql_stmt_prepare(stmt, query, strlen(query))) {
-    printf("in dblogger:connect_to_database: mysql_stmt_prepare failed: %s\n", mysql_stmt_error(stmt));
+  len = asprintf(&stmt_prepare, "INSERT INTO `logg` (severity,event,source,datetime)"
+						     "VALUES(?,?,?,?)");
+  if(len < 0) {
+    log_msg("in dblogger:connect_to_database: asprintf failed: %s\n", strerror(errno));
+    return errno;
+  }
+  if(mysql_stmt_prepare(stmt, stmt_prepare, len)) {
+    log_msg("in dblogger:connect_to_database: mysql_stmt_prepare failed: %s\n", mysql_stmt_error(stmt));
     return mysql_stmt_errno(stmt);
   }
 
@@ -75,9 +96,17 @@ int log_to_database(log_entry *ent) {
   if(!ent) return EFAULT;
   if(!mysql || !stmt) return -1;
 
+  unsigned long connection_id = mysql_thread_id(mysql);
   if(mysql_ping(mysql)) {
-    printf("in dblogger:log_to_database: mysql_ping failed: %s\n", mysql_error(mysql));
+    log_msg("in dblogger:log_to_database: mysql_ping failed: %s\n", mysql_error(mysql));
     return mysql_errno(mysql);
+  }
+  if(mysql_thread_id(mysql) != connection_id) {
+    log_msg("in dblogger:log_to_database: auto-reconnect established");
+    if(mysql_stmt_prepare(stmt, stmt_prepare, len)) {
+      log_msg("in dblogger:log_to_database: mysql_stmt_prepare failed: %s\n", mysql_stmt_error(stmt));
+      return mysql_stmt_errno(stmt);
+    }
   }
 
   memset(sbind,0,sizeof(sbind));
@@ -116,7 +145,7 @@ int log_to_database(log_entry *ent) {
   ts.second= tm_info->tm_sec;
 
   if(mysql_stmt_execute(stmt)) {
-    printf("in dblogger:log_to_database: mysql_stmt_execute failed: %s\n", mysql_stmt_error(stmt));
+    log_msg("in dblogger:log_to_database: mysql_stmt_execute failed: %s\n", mysql_stmt_error(stmt));
     return mysql_stmt_errno(stmt);
   }
 
@@ -127,7 +156,7 @@ int disconnect(void) {
   int err = 0;
 
   if(mysql_stmt_close(stmt)) {
-    printf("in dblogger:log_to_database: mysql_stmt_close failed: %s\n", mysql_stmt_error(stmt));
+    log_msg("in dblogger:log_to_database: mysql_stmt_close failed: %s\n", mysql_stmt_error(stmt));
     err = mysql_stmt_errno(stmt);
   }
 

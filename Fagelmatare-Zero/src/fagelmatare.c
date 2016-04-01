@@ -401,7 +401,7 @@ void *network_func(void *param) {
 
               asprintf(&query,
                   "INSERT INTO `sensors` ("
-                  "`cpu`, `outside`, `inside`, `pressure`, `humidity`"
+                  "`cpu`, `outside`, `inside`, `pressure`, `humidity`, `datetime`"
                   ") VALUES ("
                   "'%s', '%s', '%s', '%s', '%s', NOW()"
                   ")", data ? data : "",
