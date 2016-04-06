@@ -298,7 +298,7 @@ int __attribute__((optimize("O0"))) sensors_grab(struct IMUData *data, int sampl
    * According to pressure Mechanical characteristics: see datasheet table 3
    * For pressure in range 800 to 1100 hPa inbetween 20 to 60 °C ±0.2
    */
-  data->pressure = roundf(P_LPS25H / 0.2f) * 0.2f;
+  data->pressure = ceilf(P_LPS25H / 0.2f) * 0.2f;
 
   /*
    * Reference: datasheet DM00066332.pdf (January 2014), www.st.com
@@ -306,8 +306,8 @@ int __attribute__((optimize("O0"))) sensors_grab(struct IMUData *data, int sampl
    * For humidity in range 20 to 80 % rH ±3.5
    * For temperature in range 15 to 60 °C ±0.5
    */
-  data->temperature = roundf(T_HTS221 / 0.5f) * 0.5f;
-  data->humidity = roundf(H_HTS221 / 3.5f) * 3.5f;
+  data->temperature = ceilf(T_HTS221 / 0.5f) * 0.5f;
+  data->humidity = ceilf(H_HTS221 / 3.5f) * 3.5f;
 
   /*
    * Free memory from allocated sensor sample arrays since we no longer need them

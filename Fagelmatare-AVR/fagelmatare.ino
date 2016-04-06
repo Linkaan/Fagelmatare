@@ -284,7 +284,7 @@ void loop() {
        * According to sensor DC Electrical Characteristics: see datasheet table 1
        * For thermometer in range -10 to 85 °C ±0.5
        */
-      Serial.print(round(temperature/0.5)*20);
+      Serial.print(ceil(temperature/0.5)*20);
       Serial.print('\0');
       return;
     }

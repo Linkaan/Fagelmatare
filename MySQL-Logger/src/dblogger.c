@@ -102,7 +102,7 @@ int log_to_database(log_entry *ent) {
     return mysql_errno(mysql);
   }
   if(mysql_thread_id(mysql) != connection_id) {
-    log_msg("in dblogger:log_to_database: auto-reconnect established");
+    log_msg("in dblogger:log_to_database: auto-reconnect established\n");
     if(mysql_stmt_prepare(stmt, stmt_prepare, len)) {
       log_msg("in dblogger:log_to_database: mysql_stmt_prepare failed: %s\n", mysql_stmt_error(stmt));
       return mysql_stmt_errno(stmt);
@@ -155,11 +155,15 @@ int log_to_database(log_entry *ent) {
 int disconnect(void) {
   int err = 0;
 
-  if(mysql_stmt_close(stmt)) {
+  if(!mysql) return 0;
+
+  if(stmt != NULL && mysql_stmt_close(stmt)) {
     log_msg("in dblogger:log_to_database: mysql_stmt_close failed: %s\n", mysql_stmt_error(stmt));
     err = mysql_stmt_errno(stmt);
   }
 
   mysql_close(mysql);
+  mysql = NULL;
+  stmt = NULL;
   return err;
 }
