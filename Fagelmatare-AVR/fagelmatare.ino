@@ -276,6 +276,28 @@ void loop() {
       return;
     }
 
+    if(str == "open_shutter") {
+      digitalWrite(OPEN_PIN, HIGH);
+      delay(500);
+      digitalWrite(OPEN_PIN, LOW);
+      Serial.print("/E/");
+      Serial.print("open_shutter");
+      Serial.print('\0');
+      last_ir_value = LOW; // prevent program from closing shutter immediately
+      return;
+    }
+
+    if(str == "close_shutter") {
+      digitalWrite(CLOSE_PIN, HIGH);
+      delay(500);
+      digitalWrite(CLOSE_PIN, LOW);
+      Serial.print("/E/");
+      Serial.print("close_shutter");
+      Serial.print('\0');
+      last_ir_value = LOW; // prevent program from opening shutter immediately
+      return;
+    }
+
     if(str == "temperature") {
       float temperature = measure_median_temperature();
       Serial.print("/R/");
@@ -284,7 +306,7 @@ void loop() {
        * According to sensor DC Electrical Characteristics: see datasheet table 1
        * For thermometer in range -10 to 85 °C ±0.5
        */
-      Serial.print(ceil(temperature/0.5)*20);
+      Serial.print(ceil(temperature/0.5)*5);
       Serial.print('\0');
       return;
     }
