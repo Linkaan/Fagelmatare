@@ -34,11 +34,11 @@
 
 enum {
   LOG_LEVEL_NONE = 0,
-  LOG_LEVEL_DEBUG= 1,
+  LOG_LEVEL_DEBUG = 1,
   LOG_LEVEL_INFO = 2,
   LOG_LEVEL_WARN = 3,
-  LOG_LEVEL_ERROR= 4,
-  LOG_LEVEL_FATAL= 5,
+  LOG_LEVEL_ERROR = 4,
+  LOG_LEVEL_FATAL = 5,
 };
 
 struct user_data_log {
@@ -46,10 +46,8 @@ struct user_data_log {
   struct config *configs;
 };
 
-void log_level_string(char *lls_buffer, int msg_log_level);
 int log_init(struct user_data_log *userdata);
-void log_exit();
-int log_get_level(void);
+void log_exit(void);
 void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char *format, va_list args);
 void log_msg_level(int msg_log_level, time_t *rawtime, const char *source, const char *format, ...);
 void log_debug(const char *format, ...);

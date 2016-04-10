@@ -32,9 +32,9 @@
 int get_config(char *filename, struct config *configuration) {
   FILE *stream;
 
-  if((stream = fopen(filename, "r")) == NULL) {
+  if ((stream = fopen(filename, "r")) == NULL) {
     return 1;
-  }else {
+  } else {
     char *line;
     size_t len = 0;
     ssize_t read;
@@ -65,6 +65,9 @@ int get_config(char *filename, struct config *configuration) {
         }else if(!strcmp(pch, "pir_gpio_input") && (pch = strtok(NULL, DELIM)) != NULL) {
           char *end;
 
+          /*
+           * Use strtol to parse into an integer
+           */
           configuration->pir_input = (int) strtol(pch, &end, 10);
           if (*end || errno == ERANGE) {
             return 1;
@@ -81,21 +84,21 @@ int get_config(char *filename, struct config *configuration) {
 
 void free_config(struct config *configuration) {
   free(configuration->serv_addr);
-  free(configuration->username);
-  free(configuration->passwd);
-  free(configuration->sock_path);
-  free(configuration->fagelmatare_log);
-  free(configuration->state_path);
-  free(configuration->start_hook);
-  free(configuration->subtitle_hook);
-  free(configuration->stop_hook);
   configuration->serv_addr = NULL;
+  free(configuration->username);
   configuration->username = NULL;
+  free(configuration->passwd);
   configuration->passwd = NULL;
+  free(configuration->state_path);
   configuration->sock_path = NULL;
+  free(configuration->sock_path);
   configuration->fagelmatare_log = NULL;
+  free(configuration->fagelmatare_log);
   configuration->state_path = NULL;
+  free(configuration->start_hook);
   configuration->start_hook = NULL;
-  configuration->stop_hook = NULL;
+  free(configuration->subtitle_hook);
   configuration->subtitle_hook = NULL;
+  free(configuration->stop_hook);
+  configuration->stop_hook = NULL;
 }

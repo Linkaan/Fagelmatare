@@ -26,43 +26,62 @@
 #define PING_ENABLED
 #include <NewPing.h>
 
-#define MAX_TIME  99999.0f
-
-#define TRIGGER_PIN     10 // Arduino pin tied to trigger pin on ping sensor.
-#define ECHO_PIN         9 // Arduino pin tied to echo pin on ping sensor.
-#define MAX_DISTANCE   200 // Maximum distance we want to ping for (in centimeters). Maximum sensor distance is rated at 400-500cm.
-
+#define MAX_TIME 99999.0f
 #define COOLDOWN 1000L
 
-#define R2  57.6f
-#define Vin 3.3f
+/*
+ * Ping sensor configuration. Maximum sensor distance is rated at 400-500cm
+ */
+#define TRIGGER_PIN 10
+#define ECHO_PIN 9
+#define MAX_DISTANCE 200
 
 /*
- * These are the coefficients of Steinhart–Hart required to calculate
- * the temperature based on the resistance of my NTC resistor. They have
- * been cut down to ten millionths.
+ * Hardware specifications used in voltage divider (see designator R10)
+ */
+#define R2 57.6f
+#define Vin 3.3f
+
+/* Reference: R-T Table Temperature Sensor 5K+10K
+ * Coefficients for Steinhart–Hart used to calculate the temperature with DS18B20 thermistor.
+ * They have been cut down to ten millionths
  */
 #define A 0.0027713f
 #define B 0.0002516f
 #define C 0.0000003f
 
-#define SERVO_PIN         8
+/*
+ * Servo pin configuration
+ */
+#define SERVO_PIN 8
 #define SERVO_BEGIN_POS 100
-#define SERVO_END_POS    30
-#define SERVO_SPEED       5
+#define SERVO_END_POS 30
+#define SERVO_SPEED 5
 
+/*
+ * Shutter pin configuration
+ */
 #define OPEN_PIN  2
 #define CLOSE_PIN 3
 #define IR_PIN    4
 
-#define PING_EVENT       10 // How frequently are we going to send a serie of pings to check for rain. Value of 10 would be every 10 * PING_SPEED milliseconds.
-#define PING_SPEED      100 // How frequently are we going to send out a ping (in milliseconds). 50ms would be 20 times a second.
+/*
+ * PING_EVENT: How frequently are we going to send a serie of pings to check for rain.
+ * Value of 10 would be every 10 * TIMER_SPEED milliseconds
+ * TIMER_SPEED: How frequently are we going to send out a ping (in milliseconds).
+ * 50ms would be 20 times a second
+ */
+#define PING_EVENT  10
+#define TIMER_SPEED 100
 
-#if defined(PING_ENABLED)
-NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE); // NewPing setup of pins and maximum distance.
+#ifdef PING_ENABLED
+/*
+ * NewPing setup of pins and maximum distance.
+ */
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
 
-unsigned long pingtimer;        // Holds the next ping time.
-unsigned long cooldown;         // Limit how frequently we rise a rain event.
+unsigned long timer; // Holds the next ping time.
+unsigned long cooldown;  // Limit how frequently we rise a rain event.
 
 boolean do_ping = false;
 unsigned int pingcount = 1;
@@ -73,11 +92,11 @@ float avg_time = MAX_TIME;
 float avg_dt = 0.0f;
 float dt_hysteresis = 1.0f;
 #endif
-int duration = 7.222222*SERVO_BEGIN_POS+900;
+int duration = 65/9 * SERVO_BEGIN_POS + 900; // Formula converting angle to pulse width in microseconds
 int last_ir_value = LOW;
 
 /*
- * In the setup function we initialize the serial bus and prepare the servo.
+ * In the setup function we initialize the serial bus, setup pins for shutter and attach servo.
  */
 void setup() {
   pinMode(OPEN_PIN, OUTPUT);
@@ -90,8 +109,8 @@ void setup() {
   digitalWrite(CLOSE_PIN, LOW);
 
   pinMode(SERVO_PIN, OUTPUT);
-#if defined(PING_ENABLED)
-  pingtimer = millis(); // Start ping timer now.
+#ifdef PING_ENABLED
+  timer = millis(); // Start ping timer now.
 #endif
   Serial.begin(9600);
 }
@@ -134,7 +153,7 @@ float calculate_temperature(float read_value) {
      */
     float logR1 = log((R2 * read_value)/(1023.0f - read_value));
 
-    return 1.0f / (A + B*logR1 + C*pow(logR1, 3)) - 273.15f; // Use the Steinhart–Hart equation to calculate the temperature.
+    return 1.0f / (A + B * logR1 + C * pow(logR1, 3)) - 273.15f; // Use the Steinhart–Hart equation to calculate the temperature.
 }
 
 /*
@@ -145,9 +164,9 @@ float measure_median_temperature() {
   float temperatures[samples];
 
   /*
-   * Obtain five samples using the function above.
+   * Obtain five samples from the thermistor with 50 ms inbetween.
    */
-  for(int i=0;i<samples;i++) {
+  for (i = 0; samples < 5; i++) {
     temperatures[i] = analogRead(0); // Fetch the analog read value in the range of 0-1023
     delay(50);
   }
@@ -168,7 +187,7 @@ void sweep() {
   /*
    * Go from SERVO_BEGIN_POS to SERVO_END_POS at speed SERVO_SPEED.
    */
-  for(pos=SERVO_BEGIN_POS;pos>=(SERVO_END_POS+1);pos--) {
+  for (pos = SERVO_BEGIN_POS; pos > SERVO_END_POS; pos--) {
     servoMove(pos);
     delay(SERVO_SPEED);
   }
@@ -176,7 +195,7 @@ void sweep() {
   /*
    * Go back from SERVO_END_POS to SERVO_BEGIN_POS at speed SERVO_SPEED.
    */
-  for(;pos<SERVO_BEGIN_POS;pos++) {
+  for (; pos < SERVO_BEGIN_POS; pos++) {
     servoMove(pos);
     delay(SERVO_SPEED);
   }
@@ -184,28 +203,31 @@ void sweep() {
 
 void servoMove(int angle) {
   cli();
-  duration = 7.222222*angle+900;
+  duration = 65/9 * angle + 900;
   digitalWrite(SERVO_PIN, HIGH);
   delayMicroseconds(duration);
   digitalWrite(SERVO_PIN, LOW);
   sei();
 }
 
-#if defined(PING_ENABLED)
-void rain_check() { // Timer2 interrupt calls this function every 24uS where you can check the ping status.
-  // Don't do anything here!
+#ifdef PING_ENABLED
+void rain_check() {
+  // Timer2 interrupt calls this function every 24uS where you can check the ping status.
   uint8_t rc = sonar.check_timer();
-  if(rc==0) { // This is how you check to see if the ping was received.
+  // If rc is zero a new ping has been returned
+  if (rc == 0) {
     float echo_time = (float) sonar.ping_result;
 
-    if(avg_time == MAX_TIME) {
+    if (avg_time == MAX_TIME) {
       avg_time = echo_time;
       avg_dt = 0.0f;
-    }else {
+    } else {
+      // simple low pass filter to filter out noise from sensor
       float prev_avg_time = avg_time;
       avg_time = avg_time * g + (1.0f - g) * echo_time;
       avg_dt = avg_dt * g + (1.0f - g) * (avg_time - prev_avg_time);
 
+      // If avg_dt is within threshold and cooldown has run out send a rain event
       if(millis() > cooldown && (avg_dt < -dt_hysteresis || avg_dt > +dt_hysteresis)) {
         cooldown = millis() + COOLDOWN;
         Serial.print("/E/");
@@ -215,35 +237,36 @@ void rain_check() { // Timer2 interrupt calls this function every 24uS where you
     }
 
     iterations = 5;
-  }else if(rc > 1 && --iterations == 0) {
+  } else if (rc > 1 && --iterations == 0) {
     avg_time = MAX_TIME;
     iterations = 5;
   }
-  // Don't do anything here!
 }
 #endif
 
 /*
- * We use the loop function to check if there are any requests and also to check
- * if the variance of the sensor readings exceeds THRESHOLD.
+ * In timer event handle ping sensor, maintain servo position and control shutter.
+ * Check for any requests avaiable on the serial bus
  */
 void loop() {
-  if(millis() >= pingtimer) {     // pingSpeed milliseconds since last ping, do another ping.
-    pingtimer += PING_SPEED;      // Set the next ping time.
-    #if defined(PING_ENABLED)
+  // If TIMER_SPEED milliseconds since last timer event, do another
+  if(millis() >= timer) {
+    // Set the next scheduled timer event
+    timer += TIMER_SPEED;
+#ifdef PING_ENABLED
     pingcount++;
-    if(!do_ping && pingcount % 100 == 0) {
+    if (!do_ping && pingcount % 100 == 0) {
       do_ping = true;
       pingcount = 1;
     }
-    if(do_ping) {
+    if (do_ping) {
       sonar.ping_timer(rain_check); // Send out the ping, calls "rain_check" function every 24uS where you can check the ping status.
       if(pingcount % 10 == 0) {
         do_ping = false;
         pingcount = 1;
       }
     }
-    #endif
+#endif
     cli();
     digitalWrite(SERVO_PIN, HIGH);
     delayMicroseconds(duration);
@@ -251,7 +274,7 @@ void loop() {
     sei();
 
     int val = digitalRead(IR_PIN);
-    if(val == HIGH && last_ir_value == LOW) {
+    if (val == HIGH && last_ir_value == LOW) {
       digitalWrite(CLOSE_PIN, HIGH);
       delay(500);
       digitalWrite(CLOSE_PIN, LOW);
@@ -259,7 +282,7 @@ void loop() {
       Serial.print("close_shutter");
       Serial.print('\0');
       last_ir_value = HIGH;
-    }else if(val == LOW && last_ir_value == HIGH) {
+    } else if (val == LOW && last_ir_value == HIGH) {
       digitalWrite(OPEN_PIN, HIGH);
       delay(500);
       digitalWrite(OPEN_PIN, LOW);
@@ -269,36 +292,38 @@ void loop() {
       last_ir_value = LOW;
     }
   }
-  if(Serial.available() > 0) {
+
+  // Check for available data on serial bus
+  if (Serial.available() > 0) {
     String str = Serial.readStringUntil('\0');
-    if(str == "servo") {
+    if (str == "servo") {
       sweep();
       return;
     }
 
-    if(str == "open_shutter") {
+    if (str == "open_shutter") {
       digitalWrite(OPEN_PIN, HIGH);
       delay(500);
       digitalWrite(OPEN_PIN, LOW);
       Serial.print("/E/");
       Serial.print("open_shutter");
       Serial.print('\0');
-      last_ir_value = LOW; // prevent program from closing shutter immediately
+      last_ir_value = HIGH; // prevent program from closing shutter immediately
       return;
     }
 
-    if(str == "close_shutter") {
+    if (str == "close_shutter") {
       digitalWrite(CLOSE_PIN, HIGH);
       delay(500);
       digitalWrite(CLOSE_PIN, LOW);
       Serial.print("/E/");
       Serial.print("close_shutter");
       Serial.print('\0');
-      last_ir_value = LOW; // prevent program from opening shutter immediately
+      last_ir_value = HIGH; // prevent program from opening shutter immediately
       return;
     }
 
-    if(str == "temperature") {
+    if (str == "temperature") {
       float temperature = measure_median_temperature();
       Serial.print("/R/");
       /*
@@ -310,8 +335,8 @@ void loop() {
       Serial.print('\0');
       return;
     }
-#if defined(PING_ENABLED)
-    if(str == "distance") {
+#ifdef PING_ENABLED
+    if (str == "distance") {
       Serial.print("/R/");
       Serial.print(round(sonar.convert_cm(sonar.ping_median())*10));
       Serial.print('\0');
