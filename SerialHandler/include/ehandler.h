@@ -32,13 +32,14 @@
 typedef struct {
     char *type;
     int *subscribers;
+    pthread_mutex_t mxt;
     size_t ssize, cap;
 } event_t;
 
 int     ehandler_init(int);
 event_t *ehandler_insert(char *);
 event_t *ehandler_get(char *);
-int     ehandler_handle(event_t *);
+int     ehandler_handle(event_t *, char *);
 int     ehandler_subscribe(char *, int);
 void    ehandler_cleanup();
 

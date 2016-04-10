@@ -24,7 +24,7 @@
 ##############################################################################
 
 IDIR := ./include
-CFLAGS := -I$(IDIR) -std=gnu11 -O3 -g -gdwarf-3 -Wall -Werror -march=armv6zk -mfloat-abi=hard -mfpu=vfp -D _GNU_SOURCE
+CFLAGS := -I$(IDIR) -std=gnu11 -O3 -g -gdwarf-3 -Wall -march=armv6zk -mfloat-abi=hard -mfpu=vfp -I/usr/include/mysql -D _GNU_SOURCE
 CC := gcc
 NAME := fagelmatare
 SRCDIR := ./src
@@ -32,11 +32,14 @@ OUTDIR := ./bin
 
 all: $(OUTDIR)/$(NAME)
 
-$(OUTDIR)/$(NAME): log.o config.o lstack.o $(NAME).o
-	$(CC) $^ -o $@ -lpthread -ldblogger
+$(OUTDIR)/$(NAME): log.o config.o lstack.o sensors.o $(NAME).o
+	$(CC) $^ -o $@ -lpthread -ldblogger -lm -lmysqlclient_r
 
 $(NAME).o: $(SRCDIR)/$(NAME).c
 	$(CC) $(CFLAGS) `mysql_config --include` -c -o $@ $^
+
+sensors.o: $(SRCDIR)/sensors.c
+	$(CC) $(CFLAGS) -c -o $@ $^
 
 lstack.o: $(SRCDIR)/lstack.c
 	$(CC) $(CFLAGS) -c -o $@ $^

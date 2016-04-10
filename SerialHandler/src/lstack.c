@@ -28,8 +28,7 @@
 #include <errno.h>
 #include <lstack.h>
 
-int lstack_init(lstack_t *lstack, size_t max_size)
-{
+int lstack_init(lstack_t *lstack, size_t max_size) {
     lstack->head.aba = ATOMIC_VAR_INIT(0);
     lstack->head.node = ATOMIC_VAR_INIT(NULL);
     lstack->size = ATOMIC_VAR_INIT(0);
@@ -46,8 +45,7 @@ int lstack_init(lstack_t *lstack, size_t max_size)
     return 0;
 }
 
-static struct lstack_node *pop(_Atomic struct lstack_head *head)
-{
+static struct lstack_node *pop(_Atomic struct lstack_head *head) {
     struct lstack_head next, orig = atomic_load(head);
     do {
         if (orig.node == NULL)
@@ -58,8 +56,7 @@ static struct lstack_node *pop(_Atomic struct lstack_head *head)
     return orig.node;
 }
 
-static void push(_Atomic struct lstack_head *head, struct lstack_node *node)
-{
+static void push(_Atomic struct lstack_head *head, struct lstack_node *node) {
     struct lstack_head next, orig = atomic_load(head);
     do {
         node->next = orig.node;
@@ -68,8 +65,7 @@ static void push(_Atomic struct lstack_head *head, struct lstack_node *node)
     } while (!atomic_compare_exchange_weak(head, &orig, next));
 }
 
-int lstack_push(lstack_t *lstack, void *value)
-{
+int lstack_push(lstack_t *lstack, void *value) {
     struct lstack_node *node = pop(&lstack->free);
     if (node == NULL)
         return ENOMEM;
@@ -79,8 +75,7 @@ int lstack_push(lstack_t *lstack, void *value)
     return 0;
 }
 
-void *lstack_pop(lstack_t *lstack)
-{
+void *lstack_pop(lstack_t *lstack) {
     struct lstack_node *node = pop(&lstack->head);
     if (node == NULL)
         return NULL;

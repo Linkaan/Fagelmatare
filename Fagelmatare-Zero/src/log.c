@@ -120,6 +120,7 @@ void *log_func(void *param) {
         pthread_mutex_unlock(&mxs);
       }
       if((err = log_to_database(ent)) != 0) {
+        disconnect();
         if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
           pthread_mutex_lock(&mxs);
           fprintf(log_stream, "could not connect to database (%d)\n", err);
@@ -149,6 +150,7 @@ void *log_func(void *param) {
       pthread_mutex_unlock(&mxs);
     }
     if((err = log_to_database(ent)) != 0) {
+      disconnect();
       if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
         pthread_mutex_lock(&mxs);
         fprintf(log_stream, "could not connect to database (%d)\n", err);
@@ -168,7 +170,21 @@ void *log_func(void *param) {
   }
   return NULL;
 }
-
+/**
+void log_data(time_t *rawtime, const char *source, const char *data) {
+  if((err = log_to_database(ent)) != 0) {
+    if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
+      pthread_mutex_lock(&mxs);
+      fprintf(log_stream, "could not connect to database (%d)\n", err);
+      pthread_mutex_unlock(&mxs);
+    }else if((err = log_to_database (ent)) != 0) {
+      pthread_mutex_lock(&mxs);
+      fprintf(log_stream, "could not log to database (%d)\n", err);
+      pthread_mutex_unlock(&mxs);
+    }
+  }
+}
+*/
 void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char *format, const va_list args) {
   char buffer[20], lls_buffer[10];
 

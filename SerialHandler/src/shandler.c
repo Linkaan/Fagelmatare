@@ -66,7 +66,6 @@ struct user_data {
   int *sfd;
   int *pipefd;
   int (*sock)[2];
-  struct sockaddr *(*addr)[2];
   struct config *configs;
 };
 
@@ -241,7 +240,6 @@ int main(void) {
   }
 
   int sock[2] = {unixsock, inetsock};
-  struct sockaddr *addr[2] = { (struct sockaddr *) &addr_un, (struct sockaddr *) &addr_in};
   struct user_data userdata = {
     .results = &results,
     .mxq = &mxq,
@@ -249,11 +247,10 @@ int main(void) {
     .sfd = &sfd,
     .pipefd = &pipefd[0],
     .sock = &sock,
-    .addr = &addr,
     .configs = &configs,
   };
 
-  pthread_mutex_init(&mxq,NULL);
+  pthread_mutex_init(&mxq, NULL);
   pthread_mutex_init(&mxs, NULL);
   pthread_mutex_lock(&mxq);
   if(pthread_create(&network_thread, NULL, network_func, &userdata)) {
@@ -350,7 +347,7 @@ void send_serial(char *msg, const int sock, struct user_data *userdata) {
         size_t len = strlen(str);
         memmove(str, str+3, len - 3 + 1);
         event_t *event = ehandler_get(str);
-        if(event == NULL || ehandler_handle(event)) {
+        if(event == NULL || ehandler_handle(event, NULL)) {
           log_warn("unable to handle event (%s)\n", str);
         }
         _log_debug("caught event %s.\n", str);
@@ -450,7 +447,7 @@ void *listen_serial(void *param) {
         size_t len = strlen(str);
         memmove(str, str+3, len - 3 + 1);
         event_t *event = ehandler_get(str);
-        if(event == NULL || ehandler_handle(event)) {
+        if(event == NULL || ehandler_handle(event, NULL)) {
           log_error("unable to handle event (%s)\n", str);
         }
         //_log_debug("caught event %s.\n", str);
@@ -470,7 +467,7 @@ void *network_func(void *param) {
   int sock = 0;
   char buf[129];
   struct pollfd p[3];
-  struct sockaddr *addr = NULL;
+  struct sockaddr addr;
   struct user_data *userdata = param;
   int *pipefd = userdata->pipefd;
   socklen_t addrlen = 0;
@@ -488,16 +485,14 @@ void *network_func(void *param) {
     if(poll(p, 3, -1) > 0) {
       if(p[0].revents & (POLLIN|POLLPRI)) {
         sock = p[0].fd;
-        addr = (*userdata->addr)[1];
         addrlen = sizeof(struct sockaddr_un);
       }else if(p[1].revents & (POLLIN|POLLPRI)) {
         sock = p[1].fd;
-        addr = (*userdata->addr)[1];
         addrlen = sizeof(struct sockaddr_in);
       }else if(p[2].revents & (POLLIN|POLLPRI)) {
         break;
       }
-      if((cl = accept(sock, addr, &addrlen)) < 0) {
+      if((cl = accept(sock, &addr, &addrlen)) < 0) {
         log_error("accept error: %s\n", strerror(errno));
         continue;
       }
@@ -519,8 +514,10 @@ void *network_func(void *param) {
         }else if(!strncasecmp("/E/", buf, 3)) {
           size_t len = strlen(buf);
           memmove(buf, buf+3, len - 3 + 1);
-          event_t *event = ehandler_get(buf);
-          if(event == NULL || ehandler_handle(event)) {
+          char *type = strtok(buf, ":");
+          event_t *event = ehandler_get(type);
+          char *data = strtok(NULL, ":");
+          if(event == NULL || (data ? ehandler_handle(event, data) : ehandler_handle(event, NULL))) {
             log_error("unable to handle event (%s)\n", buf);
           }
           _log_debug("caught event %s.\n", buf);

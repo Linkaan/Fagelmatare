@@ -1,6 +1,6 @@
 /*
  *  fagelmatare.c
- *    Handle temperature/pressure/humidity sensor readings using sensehat libraries
+ *    Log temperature/pressure/humidity sensor measurements
  *    Copyright (C) 2015 Linus Styrén
  *****************************************************************************
  *  This file is part of Fågelmataren:
@@ -45,7 +45,10 @@
 #include <pthread.h>
 #include <errno.h>
 #include <config.h>
+#include <sensors.h>
 #include <log.h>
+#include <my_global.h>
+#include <mysql.h>
 
 #define CONFIG_PATH "/etc/fagelmatare.conf"
 
@@ -65,8 +68,10 @@ static sem_t wakeup_main;
 static sem_t cleanup_done;
 
 static int is_atexit_enabled;
+static int is_sensors_enabled;
 
 void *network_func	(void *param);
+int send_issue      (char **, struct config *, char *);
 
 void die		        (int sig);
 void quit           (int sig);
@@ -98,6 +103,13 @@ int main(void) {
   if(log_init(&userdata_log)) {
     printf("error initalizing log thread: %s\n", strerror(errno));
     exit(1);
+  }
+
+  if(sensors_init()) {
+    log_error("error initalizing sensors library.");
+    is_sensors_enabled = 0;
+  }else {
+    is_sensors_enabled = 1;
   }
 
   /* init user_data struct used by network_func */
@@ -185,18 +197,11 @@ void *network_func(void *param) {
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = inet_addr(userdata->configs->inet_addr);
   addr.sin_port = htons(userdata->configs->inet_port);
-  addrlen = sizeof(struct sockaddr_un);
+  addrlen = sizeof(struct sockaddr_in);
 
   ConnectToPeer:
   if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
     log_error("in network_func: socket(AF_INET, SOCK_STREAM, 0) error: %s\n", strerror(errno));
-    log_exit();
-    exit(1);
-  }
-
-  if(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &(int){ 1 }, sizeof(int)) < 0) {
-    log_fatal("in network_func: setsockopt(SO_REUSEADDR) failed: %s\n", strerror(errno));
-    close(sockfd);
     log_exit();
     exit(1);
   }
@@ -253,7 +258,7 @@ void *network_func(void *param) {
     }
   }
 
-  len = asprintf(&msg, "/S/rain|temp");
+  len = asprintf(&msg, "/S/rain|temp|open_shutter|close_shutter");
   if(len < 0) {
     log_error("in network_func: asprintf error: %s\n", strerror(errno));
     close(sockfd);
@@ -262,7 +267,7 @@ void *network_func(void *param) {
     exit(1);
   }
   if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
-    if(rc > 0) log_error("partial write (%d of %d)\n", rc, len);
+    if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
     else {
       log_error("failed to subscribe to event (send error: %s)\n", strerror(errno));
       close(sockfd);
@@ -294,19 +299,129 @@ void *network_func(void *param) {
         }
         size_t len = strlen(buf);
         memmove(buf, buf+3, len - 3 + 1);
+        char *event = strtok(buf, ":");
+        char *data = strtok(NULL, ":");
         for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
-          if(!strncasecmp("rain", buf, strlen(buf))) {
+          if(!strncasecmp("rain", event, len)) {
             rawtime = malloc(sizeof(time_t));
             if(rawtime == NULL) {
               log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
-              // abort() ???
               continue;
             }
             time(rawtime);
             log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "rain\n");
-          }else if(!strncasecmp("temp", buf, strlen(buf))) {
-            _log_debug("caught event temp!!");
-          }else if(!strncasecmp("subscribed", buf, strlen(buf))) {
+          }else if(!strncasecmp("open_shutter", event, len)) {
+            rawtime = malloc(sizeof(time_t));
+            if(rawtime == NULL) {
+              log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
+              continue;
+            }
+            time(rawtime);
+            log_msg_level(LOG_LEVEL_INFO, rawtime, "shutter", "open\n");
+          }else if(!strncasecmp("close_shutter", event, len)) {
+            rawtime = malloc(sizeof(time_t));
+            if(rawtime == NULL) {
+              log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
+              continue;
+            }
+            time(rawtime);
+            log_msg_level(LOG_LEVEL_INFO, rawtime, "shutter", "close\n");
+          }else if(!strncasecmp("temp", event, len)) {
+            struct IMUData imu_data;
+            char *issue;
+            char *out_temp;
+            char *hpa, *in, *rh;
+            int sensors_avail;
+
+            send_issue(&out_temp, userdata->configs, "1;temperature");
+
+            if(!is_sensors_enabled && sensors_init()) { // try again to initialize sensor library
+              is_sensors_enabled = 1;
+            }
+
+            if(is_sensors_enabled) {
+              memset(&imu_data, 0, sizeof(struct IMUData));
+              if(sensors_grab(&imu_data, 8, 1000)) { // grab 8 samples with 1000 µs inbetween
+                log_warn("in network_func: failed to grab sensor data: %s\n", strerror(errno));
+              }else {
+                sensors_avail = 1;
+              }
+            }
+
+            if(sensors_avail) {
+              if(asprintf(&hpa, "%d", (int)(imu_data.pressure * 10.0f)) < 0) {
+                free(hpa);
+                hpa = NULL;
+              }
+              if(asprintf(&in, "%d", (int)(imu_data.temperature * 10.0f)) < 0) {
+                free(in);
+                in = NULL;
+              }
+              if(asprintf(&rh, "%d", (int)(imu_data.humidity * 10.0f)) < 0) {
+                free(rh);
+                rh = NULL;
+              }
+            }
+
+            len = asprintf(&issue, "/E/templog:cpu %s,out %s,in %s,hpa %s,rh %s",
+                  data ? data : "NaN",
+                  out_temp ? out_temp : "NaN",
+                  in ? in : "NaN",
+                  hpa ? hpa : "NaN",
+                  rh ? rh : "NaN");
+            if(len < 0) {
+              log_error("in network_func: asprintf error: %s\n", strerror(errno));
+              free(issue);
+              continue;
+            }
+
+            if(send_issue(NULL, userdata->configs, issue) != 0) {
+              log_error("in network_func: failed to send issue: %s\n", issue);
+            }
+
+            /*
+             * Temporary solution which logs to database
+             * Emphasis on temporary!
+             */
+            {
+              MYSQL *mysql;
+              char *query;
+
+              mysql = mysql_init(NULL);
+              if(NULL == mysql) {
+                fprintf(stderr, "%s\n", mysql_error(mysql));
+                break;
+              }
+
+              if(NULL == mysql_real_connect(mysql, userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd, "fagelmatare", 0, NULL, 0)) {
+                mysql_close(mysql);
+                fprintf(stderr, "%s\n", mysql_error(mysql));
+                break;
+              }
+
+              asprintf(&query,
+                  "INSERT INTO `sensors` ("
+                  "`cpu`, `outside`, `inside`, `pressure`, `humidity`, `datetime`"
+                  ") VALUES ("
+                  "'%s', '%s', '%s', '%s', '%s', NOW()"
+                  ")", data ? data : "",
+                       out_temp ? out_temp : "",
+                       in ? in : "",
+                       hpa ? hpa : "",
+                       rh ? rh : "");
+
+              if(mysql_query(mysql, query)) {
+                fprintf(stderr, "%s\n", mysql_error(mysql));
+              }
+              mysql_close(mysql);
+            }
+
+            free(out_temp);
+            free(hpa);
+            free(in);
+            free(rh);
+            free(issue);
+          }else if(!strncasecmp("subscribed", event, len)) {
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
             if(len < 0) {
@@ -317,7 +432,7 @@ void *network_func(void *param) {
               exit(1);
             }
             if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
-              if(rc > 0) log_error("partial write (%d of %d)\n", rc, len);
+              if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
               else {
                 log_error("failed to subscribe to event (write error: %s)\n", strerror(errno));
                 close(sockfd);
@@ -350,6 +465,78 @@ void *network_func(void *param) {
 
   close(userdata->pipefd[0]);
   return NULL;
+}
+
+int send_issue(char **response, struct config *configs, char *issue) {
+  int fd, rc, len;
+  struct sockaddr_in addr;
+  char buf[BUFSIZ];
+  char *tmp, *result;
+  socklen_t addrlen;
+  size_t total_size, offset;
+
+  if(issue == NULL || issue[0] == '\0') return 0;
+
+  if((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+    log_error("in send_issue: socket error: %s\n", strerror(errno));
+    return 1;
+  }
+
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = inet_addr(configs->inet_addr);
+  addr.sin_port = htons(configs->inet_port);
+  addrlen = sizeof(struct sockaddr_in);
+
+  if(connect(fd, (struct sockaddr*) &addr, addrlen) == -1) {
+    log_error("in send_issue: connect error: %s\n", strerror(errno));
+    close(fd);
+    return 1;
+  }
+
+  len = strlen(issue);
+  if((rc = send(fd, issue, len, MSG_NOSIGNAL)) != len) {
+    if(rc > 0) log_error("in send_issue: partial write (%d of %d)\n", rc, len);
+    else {
+      log_error("in send_issue: send error: %s\n", strerror(errno));
+      close(fd);
+      return 1;
+    }
+  }
+
+  if(response == NULL) {
+    close(fd);
+    return 0;
+  }
+
+  total_size = 0;
+  offset = 0;
+  result = NULL;
+  while((rc = recv(fd, buf, BUFSIZ-1, 0)) > 0) {
+    buf[rc] = '\0';
+    total_size += rc+1;
+    tmp = realloc(result, total_size * sizeof(char));
+    if(tmp == NULL) {
+      log_error("in send_issue: realloc error: %s\n", strerror(errno));
+      free(result);
+      close(fd);
+      return 1;
+    }else {
+      result = tmp;
+    }
+    memcpy(result + offset, buf, rc+1);
+    offset += strnlen(buf, rc);
+  }
+  if(rc < 0) {
+    log_error("in send_issue: recv error: %s\n", strerror(errno));
+    free(result);
+    close(fd);
+    return 1;
+  }
+  *response = result;
+
+  close(fd);
+  return 0;
 }
 
 void die(int sig) {

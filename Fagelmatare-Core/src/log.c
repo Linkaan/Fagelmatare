@@ -72,20 +72,20 @@ int log_init(struct user_data_log *userdata) {
   int err;
 
   log_stream = fopen(userdata->configs->fagelmatare_log, "w");
-  if(log_stream == NULL) {
+  if (log_stream == NULL) {
      return -1;
   }
   setvbuf(log_stream, NULL, _IONBF, 0);
   dup2(fileno(log_stream), STDOUT_FILENO);
   dup2(fileno(log_stream), STDERR_FILENO);
 
-  if((err = lstack_init(&log_stack, 10 + 5)) != 0) {
+  if ((err = lstack_init(&log_stack, 10 + 5)) != 0) {
     errno = err;
     return -1;
   }
 
   pthread_mutex_lock(&mxq);
-  if(pthread_create(&log_thread, NULL, log_func, userdata)) {
+  if (pthread_create(&log_thread, NULL, log_func, userdata)) {
     return -1;
   }
 
@@ -108,8 +108,8 @@ void *log_func(void *param) {
 
   while(!need_quit(&mxq)) {
     // TODO add proper polling system
-    if((ent = lstack_pop(&log_stack)) != NULL) {
-      if(ent->severity >= userdata->log_level) {
+    if ((ent = lstack_pop(&log_stack)) != NULL) {
+      if (ent->severity >= userdata->log_level) {
         char buffer[20], lls_buffer[10];
 
         strftime(buffer, 20, "%F %H:%M:%S", localtime(ent->rawtime));
@@ -119,12 +119,13 @@ void *log_func(void *param) {
         fprintf(log_stream, "[%s: %s] %s", lls_buffer, buffer, ent->event);
         pthread_mutex_unlock(&mxs);
       }
-      if((err = log_to_database(ent)) != 0) {
-        if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
+      if ((err = log_to_database(ent)) != 0) {
+        disconnect();
+        if ((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
           pthread_mutex_lock(&mxs);
           fprintf(log_stream, "could not connect to database (%d)\n", err);
           pthread_mutex_unlock(&mxs);
-        }else if((err = log_to_database (ent)) != 0) {
+        } else if ((err = log_to_database (ent)) != 0) {
           pthread_mutex_lock(&mxs);
           fprintf(log_stream, "could not log to database (%d)\n", err);
           pthread_mutex_unlock(&mxs);
@@ -138,7 +139,7 @@ void *log_func(void *param) {
   }
 
   while((ent = lstack_pop(&log_stack)) != NULL) {
-    if(ent->severity >= userdata->log_level) {
+    if (ent->severity >= userdata->log_level) {
       char buffer[20], lls_buffer[10];
 
       strftime(buffer, 20, "%F %H:%M:%S", localtime(ent->rawtime));
@@ -148,12 +149,13 @@ void *log_func(void *param) {
       fprintf(log_stream, "[%s: %s] %s", lls_buffer, buffer, ent->event);
       pthread_mutex_unlock(&mxs);
     }
-    if((err = log_to_database(ent)) != 0) {
-      if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
+    if ((err = log_to_database(ent)) != 0) {
+      disconnect();
+      if ((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
         pthread_mutex_lock(&mxs);
         fprintf(log_stream, "could not connect to database (%d)\n", err);
         pthread_mutex_unlock(&mxs);
-      }else if((err = log_to_database (ent)) != 0) {
+      } else if ((err = log_to_database (ent)) != 0) {
         pthread_mutex_lock(&mxs);
         fprintf(log_stream, "could not log to database (%d)\n", err);
         pthread_mutex_unlock(&mxs);
@@ -163,7 +165,7 @@ void *log_func(void *param) {
     free(ent);
   }
 
-  if((err = disconnect()) != 0) {
+  if ((err = disconnect()) != 0) {
     fprintf(log_stream, "error while disconnecting from database (%d)\n", err);
   }
   return NULL;
@@ -173,7 +175,7 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
   char buffer[20], lls_buffer[10];
 
   log_entry *ent = malloc(sizeof(log_entry));
-  if(ent == NULL) {
+  if (ent == NULL) {
     pthread_mutex_lock(&mxs);
     fprintf(log_stream, "in log_msg: memory allocation failed: (%s)\n", strerror(errno));
     pthread_mutex_unlock(&mxs);
@@ -188,7 +190,7 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
   strcpy(ent->source, source);
   ent->rawtime = rawtime;
 
-  if(lstack_push(&log_stack, ent) != 0) {
+  if (lstack_push(&log_stack, ent) != 0) {
     pthread_mutex_lock(&mxs);
     fprintf(log_stream, "in log_msg: enqueue log entry failed (size %d)\n", lstack_size(&log_stack));
     pthread_mutex_unlock(&mxs);

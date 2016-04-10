@@ -2,4 +2,4 @@
  Fagelmatare AVR - TODO
 -------------------------
 
-- Code needs refactoring
+- Change serialization protocol to binary.
