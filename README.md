@@ -34,7 +34,7 @@ Apart from the stand-alone unit which I refer to as Fågelmataren, a server is u
 - **Send Event** is a small utility program to interact with Serial Handler to rise arbitrary events.
 
 ### Workflow
-![flowchart](http://i.imgur.com/QGEeTjX.png)
+![flowchart](http://i.imgur.com/UwN4aM8.png)
 
 ### Thanks to
 - Audio/Video recorder for Raspberry Pi: [picam](https://github.com/iizukanao/picam)
