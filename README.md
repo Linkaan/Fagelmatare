@@ -8,7 +8,7 @@ Fågelmataren is an advanced bird feeder equipped with many peripherals to inter
 
 Fågelmataren is mostly self-contained and it is controlled from a Raspberry Pi 2. The master Raspberry Pi uses a slave Raspberry Pi Zero with a SenseHat for logging temperature, atmospheric pressure and relative humidity. To feed the birds a valve is opened at a fixed time every day. This valve is controlled by a servo. To steer this servo an ATMega328-PU is used. The ATMega328-PU is also used to log the temperature outside of the box.
 
-Apart from the stand-alone unit which I refer to as Fågelmataren, a server is used to host a database to store the sensor measurements and videos recorded. It is also necessary to transcode the video stream from Fågelmataren to a lower quality stream with lower bitrate and resolution before streaming it to ustream. The server is running currently running on a quadcore laptop but I am planning to replace it with a Raspberry Pi 3. For more details on how Fågelmataren works please refer to the flowchart below.
+Apart from the stand-alone unit which I refer to as Fågelmataren, a server is used to host a database to store the sensor measurements and videos recorded. It is also necessary to transcode the video stream from Fågelmataren to a lower quality stream with lower bitrate and resolution before streaming it to ustream. The server is running partialy on a quadcore laptop and a Raspberry Pi 3 but I am planning to replace it fully with a Raspberry Pi 3. For more details on how Fågelmataren works please refer to the flowchart below.
 
 ### Functions
 
