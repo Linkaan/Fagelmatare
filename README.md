@@ -44,4 +44,4 @@ Apart from the stand-alone unit which I refer to as Fågelmataren, a server is u
 - Instrument control, data acquisition display and analysis: [experix laboratory control system](https://sourceforge.net/projects/experix/)
 
 ### License
-The codebase for Fågelmataren is LPGL-licensed. Please refer to the LICENSE file for detailed information.
+The codebase for Fågelmataren is GPL-licensed. Please refer to the LICENSE file for detailed information.
