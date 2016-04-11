@@ -71,6 +71,7 @@
 struct user_data {
   lstack_t *results;
   int *pipefd;
+  int *timerfd;
   struct config *configs;
 };
 
@@ -263,6 +264,10 @@ int main(void) {
   sem_post(&cleanup_done);
 }
 
+/*
+ * network_func function runs in another thread and is used for handling
+ * events from Serial Handler
+ */
 void *network_func(void *param) {
   struct user_data *userdata = param;
   int sockfd
@@ -270,7 +275,8 @@ void *network_func(void *param) {
   int len;
   int valopt;
   int flags;
-  char *msg, buf[144];
+  char *msg;
+  char buf[144];
   struct sockaddr_un addr;
   socklen_t addrlen;
   fd_set myset;

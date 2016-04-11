@@ -32,6 +32,9 @@
 #include <lstack.h>
 #include <log.h>
 
+/*
+ * Mutexes used for locking resorces
+ */
 static pthread_mutex_t mxq = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t mxs = PTHREAD_MUTEX_INITIALIZER;
 
@@ -69,27 +72,33 @@ void log_level_string(char *lls_buffer, int msg_log_level) {
 int log_init(struct user_data_log *userdata) {
   int err;
 
+  // open log file in write mode
   log_stream = fopen(userdata->configs->shandler_log, "w");
-  if(log_stream == NULL) {
+  if (log_stream == NULL) {
      return -1;
   }
+
+  // disable buffering for file stream
   setvbuf(log_stream, NULL, _IONBF, 0);
+
+  // redirect stdout and stderr to file
   dup2(fileno(log_stream), STDOUT_FILENO);
   dup2(fileno(log_stream), STDERR_FILENO);
 
-  if((err = lstack_init(&log_stack, 10 + 4)) != 0) {
+  // init lock-free stack used for buffering queries with size 10
+  // + number of threads using this module
+  if ((err = lstack_init(&log_stack, 10 + 4)) != 0) {
     errno = err;
     return -1;
   }
 
   pthread_mutex_lock(&mxq);
-  if(pthread_create(&log_thread, NULL, log_func, userdata)) {
+  if (pthread_create(&log_thread, NULL, log_func, userdata)) {
     return -1;
   }
 
   return 0;
 }
-
 
 void log_exit() {
   pthread_mutex_unlock(&mxq);
@@ -98,6 +107,10 @@ void log_exit() {
   fclose(log_stream);
 }
 
+/*
+ * log_func function runs in another thread and is used for pooling
+ * queries from queue using a FIFO stack
+ */
 void *log_func(void *param) {
   int err;
   struct user_data_log *userdata = param;
@@ -105,26 +118,33 @@ void *log_func(void *param) {
 
   connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd);
 
-  while(!need_quit(&mxq)) {
+  while (!need_quit(&mxq)) {
     // TODO add proper polling system
-    if((ent = lstack_pop(&log_stack)) != NULL) {
-      if(ent->severity >= userdata->log_level) {
+
+    // if lstack entry is available in queue log it to database
+    // using MySQL-Logger library
+    if ((ent = lstack_pop(&log_stack)) != NULL) {
+      if (ent->severity >= userdata->log_level) {
         char buffer[20], lls_buffer[10];
 
+        // fetch current time in format YYYY-MM-DD HH-MM-SS
         strftime(buffer, 20, "%F %H:%M:%S", localtime(ent->rawtime));
         log_level_string(lls_buffer, ent->severity);
 
+        // print query to log file
         pthread_mutex_lock(&mxs);
         fprintf(log_stream, "[%s: %s] %s", lls_buffer, buffer, ent->event);
         pthread_mutex_unlock(&mxs);
       }
-      if((err = log_to_database(ent)) != 0) {
+
+      // attempt to log to database
+      if ((err = log_to_database(ent)) != 0) {
         disconnect();
-        if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
+        if ((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
           pthread_mutex_lock(&mxs);
           fprintf(log_stream, "could not connect to database (%d)\n", err);
           pthread_mutex_unlock(&mxs);
-        }else if((err = log_to_database (ent)) != 0) {
+        } else if ((err = log_to_database (ent)) != 0) {
           pthread_mutex_lock(&mxs);
           fprintf(log_stream, "could not log to database (%d)\n", err);
           pthread_mutex_unlock(&mxs);
@@ -137,8 +157,8 @@ void *log_func(void *param) {
     usleep(50000);
   }
 
-  while((ent = lstack_pop(&log_stack)) != NULL) {
-    if(ent->severity >= userdata->log_level) {
+  while ((ent = lstack_pop(&log_stack)) != NULL) {
+    if (ent->severity >= userdata->log_level) {
       char buffer[20], lls_buffer[10];
 
       strftime(buffer, 20, "%F %H:%M:%S", localtime(ent->rawtime));
@@ -148,13 +168,13 @@ void *log_func(void *param) {
       fprintf(log_stream, "[%s: %s] %s", lls_buffer, buffer, ent->event);
       pthread_mutex_unlock(&mxs);
     }
-    if((err = log_to_database(ent)) != 0) {
+    if ((err = log_to_database(ent)) != 0) {
       disconnect();
-      if((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
+      if ((err = connect_to_database(userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd)) != 0) {
         pthread_mutex_lock(&mxs);
         fprintf(log_stream, "could not connect to database (%d)\n", err);
         pthread_mutex_unlock(&mxs);
-      }else if((err = log_to_database (ent)) != 0) {
+      } else if ((err = log_to_database (ent)) != 0) {
         pthread_mutex_lock(&mxs);
         fprintf(log_stream, "could not log to database (%d)\n", err);
         pthread_mutex_unlock(&mxs);
@@ -164,16 +184,18 @@ void *log_func(void *param) {
     free(ent);
   }
 
-  if((err = disconnect()) != 0) {
+  if ((err = disconnect()) != 0) {
     fprintf(log_stream, "error while disconnecting from database (%d)\n", err);
   }
   return NULL;
 }
+
 void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char *format, const va_list args) {
   char buffer[20], lls_buffer[10];
 
+  // allocate memory for new log entry
   log_entry *ent = malloc(sizeof(log_entry));
-  if(ent == NULL) {
+  if (ent == NULL) {
     pthread_mutex_lock(&mxs);
     fprintf(log_stream, "in log_msg: memory allocation failed: (%s)\n", strerror(errno));
     pthread_mutex_unlock(&mxs);
@@ -188,7 +210,8 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
   strcpy(ent->source, source);
   ent->rawtime = rawtime;
 
-  if(lstack_push(&log_stack, ent) != 0) {
+  // push log entry to queue
+  if (lstack_push(&log_stack, ent) != 0) {
     pthread_mutex_lock(&mxs);
     fprintf(log_stream, "in log_msg: enqueue log entry failed (size %d)\n", lstack_size(&log_stack));
     pthread_mutex_unlock(&mxs);
@@ -198,6 +221,7 @@ void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char 
 
   return;
   ON_ERROR:
+  // on error just log message to log file without pushing to database
   strftime(buffer, 20, "%F %H:%M:%S", localtime(rawtime));
   log_level_string(lls_buffer, msg_log_level);
 
@@ -220,6 +244,7 @@ void log_debug(const char *format, ...) {
   char buffer[20];
   time_t rawtime;
 
+  // fetch current time
   time(&rawtime);
   va_list args;
   va_start(args, format);
@@ -273,6 +298,11 @@ void log_fatal(const char *format, ...) {
   va_end(args);
 }
 
+/*
+ * need_quit will try to lock mxq and return EBUSY on fail or 0 on
+ * success. It is used to see if quit mutex has been unlocked
+ * indicating the queue thread should quit.
+ */
 static int need_quit(pthread_mutex_t *mxq) {
   switch(pthread_mutex_trylock(mxq)) {
     case 0:

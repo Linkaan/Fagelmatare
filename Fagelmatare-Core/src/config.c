@@ -37,30 +37,30 @@ int get_config(char *filename, struct config *configuration) {
     size_t len = 0;
     ssize_t read;
 
-    while((read = getline(&line, &len, stream)) != -1) {
+    while ((read = getline(&line, &len, stream)) != -1) {
       char *pch;
 
       pch = strtok(line, DELIM);
-      if(pch != NULL) {
-        if(!strcmp(pch, "address") && (pch = strtok(NULL, DELIM)) != NULL) {
+      if (pch != NULL) {
+        if (!strcmp(pch, "address") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->serv_addr = strdup(pch);
-        }else if(!strcmp(pch, "username") && (pch = strtok(NULL, DELIM)) != NULL) {
+        } else if (!strcmp(pch, "username") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->username = strdup(pch);
-        }else if(!strcmp(pch, "passwd") && (pch = strtok(NULL, DELIM)) != NULL) {
+        } else if (!strcmp(pch, "passwd") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->passwd = strdup(pch);
-        }else if(!strcmp(pch, "socket_path") && (pch = strtok(NULL, DELIM)) != NULL) {
+        } else if (!strcmp(pch, "socket_path") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->sock_path = strdup(pch);
-        }else if(!strcmp(pch, "fagelmatare_log_file") && (pch = strtok(NULL, DELIM)) != NULL) {
+        } else if (!strcmp(pch, "fagelmatare_log_file") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->fagelmatare_log = strdup(pch);
-        }else if(!strcmp(pch, "state_path") && (pch = strtok(NULL, DELIM)) != NULL) {
+        } else if (!strcmp(pch, "state_path") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->state_path = strdup(pch);
-        }else if(!strcmp(pch, "start_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
+        } else if (!strcmp(pch, "start_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->start_hook = strdup(pch);
-        }else if(!strcmp(pch, "stop_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
+        } else if (!strcmp(pch, "stop_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->stop_hook = strdup(pch);
-        }else if(!strcmp(pch, "subtitle_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
+        } else if (!strcmp(pch, "subtitle_hook") && (pch = strtok(NULL, DELIM)) != NULL) {
           configuration->subtitle_hook = strdup(pch);
-        }else if(!strcmp(pch, "pir_gpio_input") && (pch = strtok(NULL, DELIM)) != NULL) {
+        } else if (!strcmp(pch, "pir_gpio_input") && (pch = strtok(NULL, DELIM)) != NULL) {
           char *end;
 
           /*

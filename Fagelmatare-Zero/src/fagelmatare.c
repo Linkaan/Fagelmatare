@@ -1,6 +1,7 @@
 /*
  *  fagelmatare.c
- *    Log temperature/pressure/humidity sensor measurements
+ *    Handle and log irregular events and regular sensor measurements
+ *    such as temperature, atmospheric pressure and relative humidity.
  *****************************************************************************
  *  This file is part of Fågelmataren, an advanced bird feeder equipped with
  *  many peripherals. See <https://github.com/Linkaan/Fagelmatare>
@@ -23,8 +24,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 #include <unistd.h>
+#include <stdbool.h>
+#include <strings.h>
+#include <errno.h>
+
+// I/O, threads and networking
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <sys/select.h>
@@ -32,21 +37,25 @@
 #include <sys/un.h>
 #include <sys/poll.h>
 #include <sys/stat.h>
-#include <sys/time.h>
+#include <pthread.h>
+
+// Time
 #include <sys/timerfd.h>
-#include <strings.h>
-#include <string.h>
+#include <sys/time.h>
 #include <time.h>
+
+// Signal, atomic and semaphore
 #include <semaphore.h>
 #include <signal.h>
 #include <stdatomic.h>
-#include <pthread.h>
-#include <errno.h>
+
+// Mysql
+#include <my_global.h>
+#include <mysql.h>
+
 #include <config.h>
 #include <sensors.h>
 #include <log.h>
-#include <my_global.h>
-#include <mysql.h>
 
 #define CONFIG_PATH "/etc/fagelmatare.conf"
 
@@ -62,19 +71,22 @@ struct user_data {
   struct config *configs;
 };
 
+/*
+ * Semaphores used for cleanup
+ */
 static sem_t wakeup_main;
 static sem_t cleanup_done;
 
 static int is_atexit_enabled;
 static int is_sensors_enabled;
 
-void *network_func	(void *param);
-int send_issue      (char **, struct config *, char *);
+void *network_func(void *param);
+int send_issue(char **response, struct config *configs, char *issue);
 
-void die		        (int sig);
-void quit           (int sig);
-void cleanup        ();
-void exit_handler   ();
+void die(int sig);
+void quit(int sig);
+void cleanup(void);
+void exit_handler(void);
 
 int sem_posted(sem_t *sem) {
   int sval = 0;
@@ -87,42 +99,44 @@ int main(void) {
   struct config configs;
   pthread_t network_thread;
 
-  /* parse configuration file */
-  if(get_config(CONFIG_PATH, &configs)) {
+  /* read and parse configuration file */
+  if (get_config(CONFIG_PATH, &configs)) {
     printf("could not parse configuration file: %s\n", strerror(errno));
     exit(1);
   }
 
   struct user_data_log userdata_log = {
-    .log_level= LOG_LEVEL_WARN,
-    .configs  = &configs,
+    .log_level = LOG_LEVEL_WARN,
+    .configs = &configs,
   };
 
-  if(log_init(&userdata_log)) {
+  /* initialize log library */
+  if (log_init(&userdata_log)) {
     printf("error initalizing log thread: %s\n", strerror(errno));
     exit(1);
   }
 
-  if(sensors_init()) {
+  /* initialize sensors library */
+  if (sensors_init()) {
     log_error("error initalizing sensors library.");
     is_sensors_enabled = 0;
-  }else {
+  } else {
     is_sensors_enabled = 1;
   }
 
   /* init user_data struct used by network_func */
   struct user_data userdata = {
     .configs = &configs,
-    .pipefd  = &pipefd[0],
+    .pipefd = &pipefd[0],
   };
 
-  if(pipe(pipefd) < 0) {
+  if (pipe(pipefd) < 0) {
     log_fatal("pipe error: %s\n", strerror(errno));
     log_exit();
     exit(1);
   }
 
-  if(pthread_create(&network_thread, NULL, network_func, &userdata)) {
+  if (pthread_create(&network_thread, NULL, network_func, &userdata)) {
     log_fatal("creating network thread: %s\n", strerror(errno));
     log_exit();
     exit(1);
@@ -162,10 +176,10 @@ int main(void) {
   // disable buffering on stdout
   setvbuf(stdout, NULL, _IONBF, 0);
 
-  // block this thread until process is interrupted
+  // block this thread until a signal is received
   sem_wait(&wakeup_main);
 
-  /* tell network thread to quit, then join the thread */
+  /* inform network thread to quit, then join the thread */
   write(pipefd[1], NULL, 8);
   close(pipefd[1]);
 
@@ -178,12 +192,19 @@ int main(void) {
   sem_post(&cleanup_done);
 }
 
+/*
+ * network_func function runs in another thread and is used for handling
+ * events from Serial Handler
+ */
 void *network_func(void *param) {
   struct user_data *userdata = param;
-  int sockfd, rc, len;
+  int sockfd;
+  int rc;
+  int len;
   int valopt;
   int flags;
-  char *msg, buf[144];
+  char *msg;
+  char buf[144];
   struct sockaddr_in addr;
   socklen_t addrlen;
   fd_set myset;
@@ -191,29 +212,33 @@ void *network_func(void *param) {
   struct pollfd p[2];
   time_t *rawtime;
 
+  // populate addr struct configured with inet sockets
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = inet_addr(userdata->configs->inet_addr);
   addr.sin_port = htons(userdata->configs->inet_port);
   addrlen = sizeof(struct sockaddr_in);
 
+  // attempt to connect to Serial Handler
   ConnectToPeer:
-  if((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+  if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
     log_error("in network_func: socket(AF_INET, SOCK_STREAM, 0) error: %s\n", strerror(errno));
     log_exit();
     exit(1);
   }
 
+  // set sockfd to be non-blocking
   flags = fcntl(sockfd, F_GETFL, 0);
-  if((fcntl(sockfd, F_SETFL, flags | O_NONBLOCK)) < 0) {
+  if ((fcntl(sockfd, F_SETFL, flags | O_NONBLOCK)) < 0) {
     log_fatal("in network_func: fnctl failed: %s\n", strerror(errno));
     close(sockfd);
     log_exit();
     exit(1);
   }
 
-  if(connect(sockfd, (struct sockaddr*) &addr, addrlen) == -1) {
-    if(errno == EINPROGRESS) {
+  // connect in non-blocking mode
+  if (connect(sockfd, (struct sockaddr*) &addr, addrlen) < 0) {
+    if (errno == EINPROGRESS) {
       _log_debug("EINPROGRESS in connect() - selecting\n");
       do {
         tv.tv_sec = 15;
@@ -221,34 +246,34 @@ void *network_func(void *param) {
         FD_ZERO(&myset);
         FD_SET(sockfd, &myset);
         rc = select(sockfd+1, NULL, &myset, NULL, &tv);
-        if(rc < 0 && errno != EINTR) {
+        if (rc < 0 && errno != EINTR) {
           log_error("in network_func: select failed: %s\n", strerror(errno));
           close(sockfd);
           log_exit();
           exit(1);
-        }else if(rc > 0) {
+        } else if(rc > 0) {
           addrlen = sizeof(int);
-          if(getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *)(&valopt), &addrlen) < 0) {
+          if (getsockopt(sockfd, SOL_SOCKET, SO_ERROR, (void *)(&valopt), &addrlen) < 0) {
             log_error("in network_func: getsockopt failed: %s\n", strerror(errno));
             close(sockfd);
             log_exit();
             exit(1);
           }
-          if(valopt) {
+          if (valopt) {
             log_error("in network_func: delayed connect() failed: %s\n", strerror(valopt));
             close(sockfd);
             log_exit();
             exit(1);
           }
           break;
-        }else {
+        } else {
            log_warn("in network_func: select timed out, reconnecting.\n");
            close(sockfd);
            sleep(5);
            goto ConnectToPeer;
          }
       } while (1);
-    }else {
+    } else {
       log_error("in network_func: connect error: %s\n", strerror(errno));
       close(sockfd);
       log_exit();
@@ -257,21 +282,23 @@ void *network_func(void *param) {
   }
 
   len = asprintf(&msg, "/S/rain|temp|open_shutter|close_shutter");
-  if(len < 0) {
+  if (len < 0) {
     log_error("in network_func: asprintf error: %s\n", strerror(errno));
     close(sockfd);
     free(msg);
     log_exit();
     exit(1);
   }
-  if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
-    if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
+
+  // send subscription request of rain, temp, open_shutter and close_shutter events to Serial Handler
+  if ((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
+    if (rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
     else {
       log_error("failed to subscribe to event (send error: %s)\n", strerror(errno));
       close(sockfd);
       free(msg);
-      log_exit(); // TODO: handle this error better
-      exit(1);
+      sleep(5);
+      goto ConnectToPeer;
     }
   }
   free(msg);
@@ -283,97 +310,107 @@ void *network_func(void *param) {
   p[1] = p[0];
   p[1].fd = userdata->pipefd[0];
 
-  while(1) {
-    if(poll(p, 2, -1)) {
-      if(p[1].revents & (POLLIN|POLLPRI)) {
+  while (1) {
+    if (poll(p, 2, -1)) {
+      // if POLLIN or POLLPRI bit is set in revents, it is time to exit
+      if (p[1].revents & (POLLIN|POLLPRI)) {
         break;
       }
 
+      // clear memory in buf to prevent old data persisting
       memset(&buf, 0, sizeof(buf));
-      if((rc = recv(sockfd, buf, sizeof(buf), 0)) > 0) {
-        if(strncasecmp("/E/", buf, 3)) {
+      if ((rc = recv(sockfd, buf, sizeof(buf), 0)) > 0) {
+        if (strncasecmp("/E/", buf, 3)) {
           log_error("in network_func: read string violating protocol (%s)\n", buf);
           continue;
         }
-        size_t len = strlen(buf);
-        memmove(buf, buf+3, len - 3 + 1);
-        char *event = strtok(buf, ":");
-        char *data = strtok(NULL, ":");
-        for(char *p = strtok(buf, "/E/");p != NULL;p = strtok(NULL, "/E/")) {
-          if(!strncasecmp("rain", event, len)) {
+
+        for (char *p = strtok(buf, "/E/"); p != NULL; p = strtok(NULL, "/E/")) {
+          size_t len = strlen(p);
+          char *event = strtok(p, ":");
+          char *data = strtok(NULL, ":");
+          if (!strncasecmp("rain", event, len)) { // handle rain event
+            // allocate memory and fetch current time and put into rawtime
             rawtime = malloc(sizeof(time_t));
-            if(rawtime == NULL) {
+            if (rawtime == NULL) {
               log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
               continue;
             }
             time(rawtime);
             log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "rain\n");
-          }else if(!strncasecmp("open_shutter", event, len)) {
+          } else if (!strncasecmp("open_shutter", event, len)) { // handle open_shutter event
             rawtime = malloc(sizeof(time_t));
-            if(rawtime == NULL) {
+            if (rawtime == NULL) {
               log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
               continue;
             }
             time(rawtime);
             log_msg_level(LOG_LEVEL_INFO, rawtime, "shutter", "open\n");
-          }else if(!strncasecmp("close_shutter", event, len)) {
+          } else if (!strncasecmp("close_shutter", event, len)) { // handle close_shutter event
             rawtime = malloc(sizeof(time_t));
-            if(rawtime == NULL) {
+            if (rawtime == NULL) {
               log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
               continue;
             }
             time(rawtime);
             log_msg_level(LOG_LEVEL_INFO, rawtime, "shutter", "close\n");
-          }else if(!strncasecmp("temp", event, len)) {
+          } else if (!strncasecmp("temp", event, len)) { // handle temp event
             struct IMUData imu_data;
-            char *issue;
             char *out_temp;
-            char *hpa, *in, *rh;
+            char *issue;
+            char *hpa;
+            char *in;
+            char *rh;
             int sensors_avail;
 
+            // request outside temperature from ATMega328-PU
             send_issue(&out_temp, userdata->configs, "1;temperature");
 
-            if(!is_sensors_enabled && sensors_init()) { // try again to initialize sensor library
+            // if sensor library was not initalized before, try to initialize sensor library now
+            if (!is_sensors_enabled && sensors_init()) {
               is_sensors_enabled = 1;
             }
 
-            if(is_sensors_enabled) {
+            // fetch sensor measurements from sensehat
+            if (is_sensors_enabled) {
               memset(&imu_data, 0, sizeof(struct IMUData));
-              if(sensors_grab(&imu_data, 8, 1000)) { // grab 8 samples with 1000 µs inbetween
+              if (sensors_grab(&imu_data, 8, 10000)) { // grab 8 samples with 1000 µs inbetween
                 log_warn("in network_func: failed to grab sensor data: %s\n", strerror(errno));
-              }else {
+              } else {
                 sensors_avail = 1;
               }
             }
 
-            if(sensors_avail) {
-              if(asprintf(&hpa, "%d", (int)(imu_data.pressure * 10.0f)) < 0) {
+            if (sensors_avail) {
+              if (asprintf(&hpa, "%d", (int)(imu_data.pressure * 10.0f)) < 0) {
                 free(hpa);
                 hpa = NULL;
               }
-              if(asprintf(&in, "%d", (int)(imu_data.temperature * 10.0f)) < 0) {
+              if (asprintf(&in, "%d", (int)(imu_data.temperature * 10.0f)) < 0) {
                 free(in);
                 in = NULL;
               }
-              if(asprintf(&rh, "%d", (int)(imu_data.humidity * 10.0f)) < 0) {
+              if (asprintf(&rh, "%d", (int)(imu_data.humidity * 10.0f)) < 0) {
                 free(rh);
                 rh = NULL;
               }
             }
 
+            // use asprintf to allocate issue and populate with templog
             len = asprintf(&issue, "/E/templog:cpu %s,out %s,in %s,hpa %s,rh %s",
                   data ? data : "NaN",
                   out_temp ? out_temp : "NaN",
                   in ? in : "NaN",
                   hpa ? hpa : "NaN",
                   rh ? rh : "NaN");
-            if(len < 0) {
+            if (len < 0) {
               log_error("in network_func: asprintf error: %s\n", strerror(errno));
               free(issue);
               continue;
             }
 
-            if(send_issue(NULL, userdata->configs, issue) != 0) {
+            // send event to event handler in Serial Handler
+            if (send_issue(NULL, userdata->configs, issue) != 0) {
               log_error("in network_func: failed to send issue: %s\n", issue);
             }
 
@@ -386,12 +423,12 @@ void *network_func(void *param) {
               char *query;
 
               mysql = mysql_init(NULL);
-              if(NULL == mysql) {
+              if (NULL == mysql) {
                 fprintf(stderr, "%s\n", mysql_error(mysql));
                 break;
               }
 
-              if(NULL == mysql_real_connect(mysql, userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd, "fagelmatare", 0, NULL, 0)) {
+              if (NULL == mysql_real_connect(mysql, userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd, "fagelmatare", 0, NULL, 0)) {
                 mysql_close(mysql);
                 fprintf(stderr, "%s\n", mysql_error(mysql));
                 break;
@@ -408,7 +445,7 @@ void *network_func(void *param) {
                        hpa ? hpa : "",
                        rh ? rh : "");
 
-              if(mysql_query(mysql, query)) {
+              if (mysql_query(mysql, query)) {
                 fprintf(stderr, "%s\n", mysql_error(mysql));
               }
               mysql_close(mysql);
@@ -419,18 +456,18 @@ void *network_func(void *param) {
             free(in);
             free(rh);
             free(issue);
-          }else if(!strncasecmp("subscribed", event, len)) {
+          } else if (!strncasecmp("subscribed", event, len)) { // handle subscribed event
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
-            if(len < 0) {
+            if (len < 0) {
               log_error("in network_func: asprintf error: %s\n", strerror(errno));
               close(sockfd);
               free(msg);
               log_exit();
               exit(1);
             }
-            if((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
-              if(rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
+            if ((rc = send(sockfd, msg, len, MSG_NOSIGNAL)) != len) {
+              if (rc > 0) log_error("in network_func: partial write (%d of %d)\n", rc, len);
               else {
                 log_error("failed to subscribe to event (write error: %s)\n", strerror(errno));
                 close(sockfd);
@@ -440,19 +477,19 @@ void *network_func(void *param) {
               }
             }
             free(msg);
-          }else {
+          } else {
             log_error("in network_func: unknown event (%s)\n", buf);
           }
         }
-      }else if(rc < 0) {
-        if(errno == EWOULDBLOCK || EAGAIN == errno) {
+      } else if (rc < 0) {
+        if (errno == EWOULDBLOCK || EAGAIN == errno) {
           log_warn("socket is non-blocking and recv was called with no data available: %s\n", strerror(errno));
           continue;
         }
         log_error("in network_func: recv error: %s\n", strerror(errno));
         log_exit();
         exit(1);
-      }else if(rc == 0) {
+      } else if (rc == 0) {
         log_warn("the subscription of event \"rain\" was reset by peer.\n");
         close(sockfd);
         sleep(5);
@@ -465,36 +502,47 @@ void *network_func(void *param) {
   return NULL;
 }
 
+/*
+ * send_issue function sends a query to Serial Handler and if response is
+ * non-zero wait for response, allocate memory and populate response
+ */
 int send_issue(char **response, struct config *configs, char *issue) {
-  int fd, rc, len;
+  int fd;
+  int rc;
+  int len;
   struct sockaddr_in addr;
   char buf[BUFSIZ];
-  char *tmp, *result;
+  char *tmp;
+  int *result;
   socklen_t addrlen;
   size_t total_size, offset;
 
-  if(issue == NULL || issue[0] == '\0') return 0;
+  if (issue == NULL || issue[0] == '\0') return 0;
 
-  if((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+  // create new socket and set returned file descriptor to fd
+  if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
     log_error("in send_issue: socket error: %s\n", strerror(errno));
     return 1;
   }
 
+  // populate addr struct configured as inet socket
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = inet_addr(configs->inet_addr);
   addr.sin_port = htons(configs->inet_port);
   addrlen = sizeof(struct sockaddr_in);
 
-  if(connect(fd, (struct sockaddr*) &addr, addrlen) == -1) {
+  // connect in blocking mode
+  if (connect(fd, (struct sockaddr*) &addr, addrlen) == -1) {
     log_error("in send_issue: connect error: %s\n", strerror(errno));
     close(fd);
     return 1;
   }
 
+  // send query to Serial Handler
   len = strlen(issue);
-  if((rc = send(fd, issue, len, MSG_NOSIGNAL)) != len) {
-    if(rc > 0) log_error("in send_issue: partial write (%d of %d)\n", rc, len);
+  if ((rc = send(fd, issue, len, MSG_NOSIGNAL)) != len) {
+    if (rc > 0) log_error("in send_issue: partial write (%d of %d)\n", rc, len);
     else {
       log_error("in send_issue: send error: %s\n", strerror(errno));
       close(fd);
@@ -502,30 +550,38 @@ int send_issue(char **response, struct config *configs, char *issue) {
     }
   }
 
-  if(response == NULL) {
+  // if response pointer is invalid, we do not have to wait for response
+  // tell peer to close connection
+  if (response == NULL) {
     close(fd);
     return 0;
   }
 
+  // receive response and allocate memory for it
   total_size = 0;
   offset = 0;
   result = NULL;
-  while((rc = recv(fd, buf, BUFSIZ-1, 0)) > 0) {
+  while ((rc = recv(fd, buf, BUFSIZ-1, 0)) > 0) {
     buf[rc] = '\0';
     total_size += rc+1;
+
+    // we use another pointer tmp to not "lose" the old pointer to previous data
+    // (if realloc fails) thus causing a memory leak
     tmp = realloc(result, total_size * sizeof(char));
-    if(tmp == NULL) {
+    if (tmp == NULL) {
       log_error("in send_issue: realloc error: %s\n", strerror(errno));
       free(result);
       close(fd);
       return 1;
-    }else {
+    } else {
       result = tmp;
     }
+
+    // concat memory block in buf to result
     memcpy(result + offset, buf, rc+1);
     offset += strnlen(buf, rc);
   }
-  if(rc < 0) {
+  if (rc < 0) {
     log_error("in send_issue: recv error: %s\n", strerror(errno));
     free(result);
     close(fd);
@@ -537,28 +593,44 @@ int send_issue(char **response, struct config *configs, char *issue) {
   return 0;
 }
 
+/*
+ * Very basic signal handler
+ */
 void die(int sig) {
-  if(sig != SIGINT && sig != SIGTERM)
+  if (sig != SIGINT && sig != SIGTERM) {
     log_fatal("received signal %d (%s), exiting.\n", sig, strsignal(sig));
+  }
   cleanup();
 }
 
+/*
+ * Quit function is called when alarm signal was caught because
+ * the program failed to perform proper exit
+ */
 void quit(int sig) {
   printf("unclean exit, from signal %d (%s).\n", sig, strsignal(sig));
   is_atexit_enabled = 0;
   exit(1);
 }
 
+/*
+ * Exit handler
+ */
 void exit_handler() {
   int atexit_enabled = is_atexit_enabled;
   cleanup();
-  if(atexit_enabled) sem_wait(&cleanup_done);
+  if (atexit_enabled) {
+    sem_wait(&cleanup_done);
+  }
   sem_destroy(&wakeup_main);
   sem_destroy(&cleanup_done);
 }
 
+/*
+ * Cleanup function
+ */
 void cleanup() {
-  if(!is_atexit_enabled) return;
+  if (!is_atexit_enabled) return;
   is_atexit_enabled = 0;
   sem_post(&wakeup_main);
   alarm(5);

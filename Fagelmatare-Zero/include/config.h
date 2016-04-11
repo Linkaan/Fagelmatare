@@ -26,6 +26,7 @@
 
 #define DELIM " \n"
 
+// configuration struct used to store data in configuration file
 struct config {
  char *serv_addr;
  char *username;
@@ -35,6 +36,14 @@ struct config {
  int inet_port;
 };
 
+/*
+ * Read configuration file into configuration struct
+ */
 int get_config(char *filename, struct config *configuration);
+
+/*
+ * Destroys resources used by configuration library
+ */
 void free_config(struct config *configuration);
+
 #endif

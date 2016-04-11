@@ -30,6 +30,7 @@
 #include <libdblogger/log_entry.h>
 #include <config.h>
 
+// log severity levels
 enum {
   LOG_LEVEL_NONE = 0,
   LOG_LEVEL_DEBUG = 1,
@@ -44,14 +45,60 @@ struct user_data_log {
   struct config *configs;
 };
 
+/*
+ * Fill lls_buffer with string representation of log level
+ */
+void log_level_string(char *lls_buffer, int msg_log_level);
+
+/*
+ * Initialize log library and create new thread for pooling queue
+ */
 int log_init(struct user_data_log *userdata);
+
+/*
+ * Destroys resources used by log library and terminates pooling thread
+ */
 void log_exit(void);
+
+/*
+ * Function for logging query to log file and database using va_list
+ */
 void log_msg(int msg_log_level, time_t *rawtime, const char *source, const char *format, va_list args);
+
+/*
+ * Wrapper for log_msg written as variadic function meaning it will
+ * populate a new va_list with variable number of arguments
+ */
 void log_msg_level(int msg_log_level, time_t *rawtime, const char *source, const char *format, ...);
+
+/*
+ * Function for directly logging debug messages using vfprintf to
+ * log file
+ */
 void log_debug(const char *format, ...);
+
+/*
+ * Variadic function calling log_msg with info log level, current time
+ * and predefined source
+ */
 void log_info(const char *format, ...);
+
+/*
+ * Variadic function calling log_msg with warning log level, current time
+ * and predefined source
+ */
 void log_warn(const char *format, ...);
+
+/*
+ * Variadic function calling log_msg with error log level, current time
+ * and predefined source
+ */
 void log_error(const char *format, ...);
+
+/*
+ * Variadic function calling log_msg with fatal log level, current time
+ * and predefined source
+ */
 void log_fatal(const char *format, ...);
 
 #endif
