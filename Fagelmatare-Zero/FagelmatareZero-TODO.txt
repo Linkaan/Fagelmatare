@@ -2,4 +2,5 @@
  Fagelmatare Zero - TODO
 -------------------------
 
-- Code needs refactoring
+- Implement proper logging to database of sensor measurements
+- Implement "true" pooling system in log.c
