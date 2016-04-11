@@ -2,25 +2,23 @@
  *  lstack.h
  *    This is a small library that provides a lock-free stack using C11's new
  *    stdatomic.h features. It's ABA aware and requires double-wide CAS.
- *    Copyright (C) 2015 Linus Styrén
  *****************************************************************************
- *  This file is part of Fågelmataren:
- *    https://github.com/Linkaan/Fagelmatare/
+ *  This file is part of Fågelmataren, an advanced bird feeder equipped with
+ *  many peripherals. See <https://github.com/Linkaan/Fagelmatare>
+ *  Copyright (C) 2015-2016 Linus Styrén
  *
- *  This library is free software; you can redistribute it and/or
- *  modify it under the terms of the GNU Lesser General Public
- *  License as published by the Free Software Foundation; either
- *  version 2.1 of the License, or (at your option) any later version.
+ *  Fågelmataren is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 3 of the Licence, or
+ *  (at your option) any later version.
  *
- *  This library is distributed in the hope that it will be useful,
+ *  Fågelmataren is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- *  Lesser General Public License for more details.
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public Licence for more details.
  *
- *  You should have received a copy of the GNU Lesser General Public
- *  License along with this library; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301
- *  USA
+ *  You should have received a copy of the GNU General Public Licence
+ *  along with Fågelmataren.  If not, see <http://www.gnu.org/licenses/>.
  *****************************************************************************
  */
 
