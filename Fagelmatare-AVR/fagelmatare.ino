@@ -164,7 +164,7 @@ float measure_median_temperature() {
   /*
    * Obtain five samples from the thermistor with 50 ms inbetween.
    */
-  for (i = 0; samples < 5; i++) {
+  for (int i = 0; samples < 5; i++) {
     temperatures[i] = analogRead(0); // Fetch the analog read value in the range of 0-1023
     delay(50);
   }

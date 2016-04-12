@@ -27,6 +27,7 @@
 #include <errmsg.h>
 #include <time.h>
 
+// struct used by library for storing log entry data
 typedef struct {
     signed char severity;
     char event[129];

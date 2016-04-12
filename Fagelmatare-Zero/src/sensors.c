@@ -56,11 +56,11 @@ int i2c;
 float P_LPS25H, T_HTS221, H_HTS221;
 
 int compare_s16(const void * a, const void * b) {
-  return ( *(__s16*)a - *(__s16*)b );
+  return (*(__s16*)a - *(__s16*)b);
 }
 
 int compare_s32(const void * a, const void * b) {
-  return ( *(__s32*)a - *(__s32*)b );
+  return (*(__s32*)a - *(__s32*)b);
 }
 
 int sensors_init(void) {
@@ -75,7 +75,7 @@ int sensors_init(void) {
   // open the i2c device on raspberry pi
   i2c = open(i2cDp, O_RDWR);
   if (i2c == -1) {
-    perror( "open i2c" );
+    perror("open i2c");
     return 1;
   }
 
@@ -177,8 +177,8 @@ int sensors_init(void) {
     else printf("read 16 at HTS221_CAL_H0_rH_x2 returns %d\n", res);
   }
 
-  T0_degC_x8 = (((__u16)HTS221cal[5] & 0x3 ) << 8) | (__u16)HTS221cal[2];
-  T1_degC_x8 = (((__u16)HTS221cal[5] & 0xc ) << 6) | (__u16)HTS221cal[3];
+  T0_degC_x8 = (((__u16)HTS221cal[5] & 0x3) << 8) | (__u16)HTS221cal[2];
+  T1_degC_x8 = (((__u16)HTS221cal[5] & 0xc) << 6) | (__u16)HTS221cal[3];
   T0_OUT = ((__s16*)(HTS221cal))[6];
   T1_OUT = ((__s16*)(HTS221cal))[7];
   H0_T0_OUT = ((__s16*)(HTS221cal))[3];
@@ -213,12 +213,12 @@ int sensors_grab(struct IMUData *data, int samplecount, int sample_usec) {
   if (!LPS25Hd16_P_OUT) {
     return 1;
   }
-  HTS221d16_T_OUT = calloc( samplecount, sizeof(__s16) );
+  HTS221d16_T_OUT = calloc(samplecount, sizeof(__s16));
   if (!HTS221d16_T_OUT) {
     free(LPS25Hd16_P_OUT);
     return 1;
   }
-  HTS221d16_H_OUT = calloc( samplecount, sizeof(__s16) );
+  HTS221d16_H_OUT = calloc(samplecount, sizeof(__s16));
   if (!HTS221d16_H_OUT) {
     free(LPS25Hd16_P_OUT);
     free(HTS221d16_T_OUT);
