@@ -21,7 +21,7 @@
 ##############################################################################
 
 IDIR := ./include
-CFLAGS := -I$(IDIR) -std=gnu11 -g -O0 -v -da -Q -gdwarf-3 -Wall -D _GNU_SOURCE -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7-a -mtune=cortex-a7
+CFLAGS := -I$(IDIR) -std=gnu11 -g -O3 -gdwarf-3 -Wall -D _GNU_SOURCE -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7-a -mtune=cortex-a7
 CC := gcc
 NAME := fagelmatare
 SRCDIR := ./src

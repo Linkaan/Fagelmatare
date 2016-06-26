@@ -21,7 +21,7 @@
 ##############################################################################
 
 IDIR := ./include
-CFLAGS := -I$(IDIR) -std=gnu11 -O3 -g -gdwarf-3 -Wall -march=armv6zk -mfloat-abi=hard -mfpu=vfp -I/usr/include/mysql -D _GNU_SOURCE
+CFLAGS := -I$(IDIR) -std=gnu11 -O3 -g -gdwarf-3 -Wall -I/usr/include/mysql -D _GNU_SOURCE
 CC := gcc
 NAME := fagelmatare
 SRCDIR := ./src
