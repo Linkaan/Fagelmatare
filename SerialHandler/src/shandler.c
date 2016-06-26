@@ -337,10 +337,10 @@ void send_serial(char *msg, const int sock, struct user_data *userdata) {
   }
   while(1) {
     _log_debug("attempting to read answer...\n");
-    if((str = read_string_until(*(userdata->sfd), '\0', 64)) == NULL || str[0] == '\0') {
+    if ((str = read_string_until(*(userdata->sfd), '\0', 64)) == NULL || str[0] == '\0') {
       str = strdup("NaN");
       break;
-    }else {
+    } else {
       if(!strncasecmp("/E/", str, 3)) {
         size_t len = strlen(str);
         memmove(str, str+3, len - 3 + 1);
@@ -477,17 +477,17 @@ void *network_func(void *param) {
   p[1] = p[0];
   p[1].fd = (*userdata->sock)[1];
   p[2] = p[0];
-  p[2].fd = pipefd[0];
+  p[2].fd = *pipefd;
 
   while (1) {
-    if(poll(p, 3, -1) > 0) {
-      if(p[0].revents & (POLLIN|POLLPRI)) {
+    if (poll(p, 3, -1) > 0) {
+      if (p[0].revents & (POLLIN|POLLPRI)) {
         sock = p[0].fd;
         addrlen = sizeof(struct sockaddr_un);
-      }else if(p[1].revents & (POLLIN|POLLPRI)) {
+      } else if(p[1].revents & (POLLIN|POLLPRI)) {
         sock = p[1].fd;
         addrlen = sizeof(struct sockaddr_in);
-      }else if(p[2].revents & (POLLIN|POLLPRI)) {
+      } else if(p[2].revents & (POLLIN|POLLPRI)) {
         break;
       }
       if((cl = accept(sock, &addr, &addrlen)) < 0) {

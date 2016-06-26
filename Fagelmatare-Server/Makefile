@@ -1,6 +1,6 @@
 #
 # Makefile:
-#	Fagelmatare-Core - Core program for Fågelmataren running on the Raspberry Pi
+#	Fagelmatare-Zero - Main program for Fågelmataren running on the Raspberry Pi zero
 ##############################################################################
 #  This file is part of Fågelmataren, an advanced bird feeder equipped with
 #  many peripherals. See <https://github.com/Linkaan/Fagelmatare>
@@ -21,7 +21,7 @@
 ##############################################################################
 
 IDIR := ./include
-CFLAGS := -I$(IDIR) -std=gnu11 -g -O0 -v -da -Q -gdwarf-3 -Wall -D _GNU_SOURCE -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7-a -mtune=cortex-a7
+CFLAGS := -I$(IDIR) -std=gnu11 -O3 -g -gdwarf-3 -Wall -march=armv6zk -mfloat-abi=hard -mfpu=vfp -I/usr/include/mysql -D _GNU_SOURCE
 CC := gcc
 NAME := fagelmatare
 SRCDIR := ./src
@@ -29,17 +29,17 @@ OUTDIR := ./bin
 
 all: $(OUTDIR)/$(NAME)
 
-$(OUTDIR)/$(NAME): log.o config.o state.o lstack.o $(NAME).o
-	$(CC) $^ -o $@ -lpthread -lwiringPi -ldblogger
+$(OUTDIR)/$(NAME): log.o config.o lstack.o sensors.o $(NAME).o
+	$(CC) $^ -o $@ -lpthread -ldblogger -lm -lmysqlclient_r
 
 $(NAME).o: $(SRCDIR)/$(NAME).c
 	$(CC) $(CFLAGS) `mysql_config --include` -c -o $@ $^
 
-lstack.o: $(SRCDIR)/lstack.c
+sensors.o: $(SRCDIR)/sensors.c
 	$(CC) $(CFLAGS) -c -o $@ $^
 
-state.o: $(SRCDIR)/state.c
-	$(CC) $(CFLAGS) `mysql_config --include` -c -o $@ $^
+lstack.o: $(SRCDIR)/lstack.c
+	$(CC) $(CFLAGS) -c -o $@ $^
 
 config.o: $(SRCDIR)/config.c
 	$(CC) $(CFLAGS) -c -o $@ $^

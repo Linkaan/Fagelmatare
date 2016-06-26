@@ -1,7 +1,7 @@
 /*
  *  fagelmatare.c
- *    Handle and log irregular events and regular sensor measurements
- *    such as temperature, atmospheric pressure and relative humidity.
+ *    Handle sensor data and log to database and run watchdog to check
+ *    connection to Fagelmatare-Core and reboot network if necessary.
  *****************************************************************************
  *  This file is part of Fågelmataren, an advanced bird feeder equipped with
  *  many peripherals. See <https://github.com/Linkaan/Fagelmatare>
@@ -49,12 +49,7 @@
 #include <signal.h>
 #include <stdatomic.h>
 
-// Mysql
-#include <my_global.h>
-#include <mysql.h>
-
 #include <config.h>
-#include <sensors.h>
 #include <log.h>
 
 #define CONFIG_PATH "/etc/fagelmatare.conf"
@@ -83,6 +78,9 @@ static int is_sensors_enabled;
 void *network_func(void *param);
 int send_issue(char **response, struct config *configs, char *issue);
 
+void *watchdog_func(void *param);
+void reset_timer(int timerfd);
+
 void die(int sig);
 void quit(int sig);
 void cleanup(void);
@@ -95,8 +93,10 @@ int sem_posted(sem_t *sem) {
 }
 
 int main(void) {
+  int watchdogfd;
   int pipefd[2];
   struct config configs;
+  pthread_t watchdog_thread;
   pthread_t network_thread;
 
   /* read and parse configuration file */
@@ -116,6 +116,13 @@ int main(void) {
     exit(1);
   }
 
+  /* initialize new file descriptor timer used as timeout for watchdog */
+  if ((watchdogfd = timerfd_create(CLOCK_REALTIME, 0)) < 0) {
+    log_fatal("timerfd_create failed: %s\n", strerror(errno));
+    log_exit();
+    exit(1);
+  }
+
   /* initialize sensors library */
   if (sensors_init()) {
     log_error("error initalizing sensors library.");
@@ -124,7 +131,7 @@ int main(void) {
     is_sensors_enabled = 1;
   }
 
-  /* init user_data struct used by network_func */
+  /* init user_data struct used by network_func and watchdog */
   struct user_data userdata = {
     .configs = &configs,
     .pipefd = &pipefd[0],
@@ -132,6 +139,12 @@ int main(void) {
 
   if (pipe(pipefd) < 0) {
     log_fatal("pipe error: %s\n", strerror(errno));
+    log_exit();
+    exit(1);
+  }
+
+  if (pthread_create(&watchdog_thread, NULL, watchdog_func, &userdata)) {
+    log_fatal("creating watchdog thread: %s\n", strerror(errno));
     log_exit();
     exit(1);
   }
@@ -182,6 +195,7 @@ int main(void) {
   /* inform network thread to quit, then join the thread */
   write(pipefd[1], NULL, 8);
   close(pipefd[1]);
+  close(watchdogfd);
 
   pthread_join(network_thread, NULL);
 
@@ -281,7 +295,7 @@ void *network_func(void *param) {
     }
   }
 
-  len = asprintf(&msg, "/S/motion|temp|open_shutter|close_shutter");
+  len = asprintf(&msg, "/S/core_watchdog");
   if (len < 0) {
     log_error("in network_func: asprintf error: %s\n", strerror(errno));
     close(sockfd);
@@ -329,7 +343,7 @@ void *network_func(void *param) {
           size_t len = strlen(p);
           char *event = strtok(p, ":");
           char *data = strtok(NULL, ":");
-          if (!strncasecmp("motion", event, len)) { // handle motion event
+          if (!strncasecmp("core_watchdog", event, len)) { // handle core_watchdog event
             // allocate memory and fetch current time and put into rawtime
             rawtime = malloc(sizeof(time_t));
             if (rawtime == NULL) {
@@ -338,124 +352,6 @@ void *network_func(void *param) {
             }
             time(rawtime);
             log_msg_level(LOG_LEVEL_INFO, rawtime, "ping sensor", "motion\n");
-          } else if (!strncasecmp("open_shutter", event, len)) { // handle open_shutter event
-            rawtime = malloc(sizeof(time_t));
-            if (rawtime == NULL) {
-              log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
-              continue;
-            }
-            time(rawtime);
-            log_msg_level(LOG_LEVEL_INFO, rawtime, "shutter", "open\n");
-          } else if (!strncasecmp("close_shutter", event, len)) { // handle close_shutter event
-            rawtime = malloc(sizeof(time_t));
-            if (rawtime == NULL) {
-              log_fatal("in network_func: memory allocation failed: (%s)\n", strerror(errno));
-              continue;
-            }
-            time(rawtime);
-            log_msg_level(LOG_LEVEL_INFO, rawtime, "shutter", "close\n");
-          } else if (!strncasecmp("temp", event, len)) { // handle temp event
-            struct IMUData imu_data;
-            char *out_temp;
-            char *issue;
-            char *hpa;
-            char *in;
-            char *rh;
-            int sensors_avail;
-
-            // request outside temperature from ATMega328-PU
-            send_issue(&out_temp, userdata->configs, "1;temperature");
-
-            // if sensor library was not initalized before, try to initialize sensor library now
-            if (!is_sensors_enabled && sensors_init()) {
-              is_sensors_enabled = 1;
-            }
-
-            // fetch sensor measurements from sensehat
-            if (is_sensors_enabled) {
-              memset(&imu_data, 0, sizeof(struct IMUData));
-              if (sensors_grab(&imu_data, 8, 10000)) { // grab 8 samples with 1000 µs inbetween
-                log_warn("in network_func: failed to grab sensor data: %s\n", strerror(errno));
-              } else {
-                sensors_avail = 1;
-              }
-            }
-
-            if (sensors_avail) {
-              if (asprintf(&hpa, "%d", (int)(imu_data.pressure * 10.0f)) < 0) {
-                free(hpa);
-                hpa = NULL;
-              }
-              if (asprintf(&in, "%d", (int)(imu_data.temperature * 10.0f)) < 0) {
-                free(in);
-                in = NULL;
-              }
-              if (asprintf(&rh, "%d", (int)(imu_data.humidity * 10.0f)) < 0) {
-                free(rh);
-                rh = NULL;
-              }
-            }
-
-            // use asprintf to allocate issue and populate with templog
-            len = asprintf(&issue, "/E/templog:cpu %s,out %s,in %s,hpa %s,rh %s",
-                  data ? data : "NaN",
-                  out_temp ? out_temp : "NaN",
-                  in ? in : "NaN",
-                  hpa ? hpa : "NaN",
-                  rh ? rh : "NaN");
-            if (len < 0) {
-              log_error("in network_func: asprintf error: %s\n", strerror(errno));
-              free(issue);
-              continue;
-            }
-
-            // send event to event handler in Serial Handler
-            if (send_issue(NULL, userdata->configs, issue) != 0) {
-              log_error("in network_func: failed to send issue: %s\n", issue);
-            }
-            
-            /*
-             * Temporary solution which logs to database
-             * Emphasis on temporary!
-             */
-            {
-              MYSQL *mysql;
-              char *query;
-
-              mysql = mysql_init(NULL);
-              if (NULL == mysql) {
-                fprintf(stderr, "%s\n", mysql_error(mysql));
-                break;
-              }
-
-              if (NULL == mysql_real_connect(mysql, userdata->configs->serv_addr, userdata->configs->username, userdata->configs->passwd, "fagelmatare", 0, NULL, 0)) {
-                mysql_close(mysql);
-                fprintf(stderr, "%s\n", mysql_error(mysql));
-                break;
-              }
-
-              asprintf(&query,
-                  "INSERT INTO `sensors` ("
-                  "`cpu`, `outside`, `inside`, `pressure`, `humidity`, `datetime`"
-                  ") VALUES ("
-                  "'%s', '%s', '%s', '%s', '%s', NOW()"
-                  ")", data ? data : "",
-                       out_temp ? out_temp : "",
-                       in ? in : "",
-                       hpa ? hpa : "",
-                       rh ? rh : "");
-
-              if (mysql_query(mysql, query)) {
-                fprintf(stderr, "%s\n", mysql_error(mysql));
-              }
-              mysql_close(mysql);
-            }
-
-            free(out_temp);
-            free(hpa);
-            free(in);
-            free(rh);
-            free(issue);
           } else if (!strncasecmp("subscribed", event, len)) { // handle subscribed event
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
@@ -591,6 +487,107 @@ int send_issue(char **response, struct config *configs, char *issue) {
 
   close(fd);
   return 0;
+}
+
+/*
+ * Watchdog function is called when watchdog timer runs out (e.g interval time reached).
+ * Depending on the value of watchdog_fails different actions will be issued.
+ * If the value is equal to three hostapd will be restarted. If the value is
+ * equal to five a full system reboot will be issued otherwise a check_watchdog
+ * event will be attempted to be sent to Fagelmatare Core.
+ */
+void *watchdog_func(void *param) {
+  struct user_data *userdata = param;
+  struct pollfd p[2];
+
+  memset(&p, 0, sizeof(p));
+
+  p[0].fd = *userdata->watchdogfd;
+  p[0].revents = 0;
+  p[0].events = POLLIN|POLLPRI;
+  p[1] = p[0];
+  p[1].fd = *userdata->pipefd;
+
+  while (1) {
+    if (poll(p, 2, -1)) {
+      // if POLLIN or POLLPRI bit is set in revents, it is time to exit
+      if (p[1].revents & (POLLIN|POLLPRI)) {
+        break;
+      }
+
+      read(*userdata->watchdogfd, NULL, 8);
+      int prev_value = atomic_fetch_add_explicit(&watchdog_fails, 1, memory_order_relaxed);
+      switch (prev_value) {
+        case 3: // Perform restart of hostapd
+        {
+          int sockfd;
+          struct ifreq ifr;
+
+          if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+            log_error("in watchdog_func: socket(AF_INET, SOCK_DGRAM, 0) error: %s\n", strerror(errno));
+            break;
+          }
+
+          memset(&ifr, 0, sizeof(ifr));
+          strncpy(ifr.ifr_name, "wlan0", IFNAMSIZ);
+
+          // bring wlan0 interface down
+          ifr.ifr_flags &= ~IFF_UP;
+          ioctl(sockfd, SIOCSIFFLAGS, &ifr);
+
+          // wait a bit
+          sleep(5);
+
+          // bring wlan0 interface up
+          ifr.ifr_flags |= IFF_UP;
+          ioctl(sockfd, SIOCSIFFLAGS, &ifr);
+          close(sockfd);
+        }
+        break;
+        case 5: // Perform full reboot of system
+        {
+          int reboot_status;
+          pid_t reboot_pid;
+
+          if ((reboot_pid = fork()) == 0) {
+              execlp("/sbin/reboot", "/sbin/reboot", NULL);
+              log_fatal("in watchdog_func: execlp error: %s\n", strerror(errno));
+              log_exit();
+              exit(1); /* never reached if execlp succeeds. */
+          }
+
+          if (reboot_pid < 0) {
+            log_error("in watchdog_func: fork error: %s\n", strerror(errno));
+            log_warn("could not spawn reboot process, performing hard reset.\n");
+            log_exit();
+            sync();
+            reboot(RB_AUTOBOOT);
+          }
+
+          waitpid(reboot_pid, &reboot_status, 0);
+          if (!WIFEXITED(reboot_status)) {
+            log_warn("reboot process did not exit sanely, performing hard reset.\n");
+            log_exit();
+            sync();
+            reboot(RB_AUTOBOOT);
+          }
+
+          if (WIFEXITSTATUS(reboot_status)) {
+            log_warn("reboot process exited with error, performing hard reset.\n");
+            log_exit();
+            sync();
+            reboot(RB_AUTOBOOT);
+          } else {
+            log_info("performing full system reboot.\n");
+          }
+        }
+        break;
+      }
+    }
+  }
+  close(userdata->pipefd[0]); // remember to make this thread-safe
+
+  return NULL;
 }
 
 /*

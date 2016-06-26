@@ -337,7 +337,7 @@ int sensors_grab(struct IMUData *data, int samplecount, int sample_usec) {
    * For temperature in range 15 to 60 °C ±0.5
    */
   data->temperature = ceilf(T_HTS221 / 0.5f) * 0.5f;
-  data->humidity = ceilf(H_HTS221 / 3.5f) * 3.5f;
+  data->humidity = ceilf(H_HTS221 / 0.5f) * 0.5f;
 
   /*
    * Free memory from allocated sensor sample arrays since we no longer need them

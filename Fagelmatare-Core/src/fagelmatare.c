@@ -33,10 +33,16 @@
 // I/O, threads and networking
 #include <fcntl.h>
 #include <sys/select.h>
-#include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/poll.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <sys/reboot.h>
+#include <sys/wait.h>
+#include <net/if.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
 #include <pthread.h>
 
 // Time
@@ -72,6 +78,7 @@ struct user_data {
   lstack_t *results;
   int *pipefd;
   int *timerfd;
+  int *watchdogfd;
   struct config *configs;
 };
 
@@ -82,6 +89,7 @@ static sem_t wakeup_main;
 static sem_t cleanup_done;
 
 static atomic_bool rec = ATOMIC_VAR_INIT(false);
+static atomic_int watchdog_fails = ATOMIC_VAR_INIT(0);
 
 #ifdef DEBUG
 static struct timespec start;
@@ -92,11 +100,13 @@ static int is_atexit_enabled;
 
 void *network_func(void *param);
 void interrupt_callback(void *param);
+int send_issue(char **response, struct config *configs, char *issue);
 
 int touch(const char *file);
-void *timer_func(void *param);
 void *queue_func(void *param);
-void reset_timer(int timerfd);
+void *timer_func(void *param);
+void *watchdog_func(void *param);
+void reset_timer(int timerfd, int secs, int isecs);
 
 int fdutimensat(int fd, int dir, char const *file, struct timespec const ts[2], int atflag);
 int on_file_create(char *filename, char *content);
@@ -115,10 +125,12 @@ int sem_posted(sem_t *sem) {
 int main(void) {
   int err;
   int timerfd;
+  int watchdogfd;
   int pipefd[2];
   struct config configs;
   pthread_t timer_thread;
   pthread_t state_thread;
+  pthread_t watchdog_thread;
   pthread_t network_thread;
   lstack_t results; /* lstack_t struct used by lstack */
 
@@ -144,13 +156,25 @@ int main(void) {
     .configs = &configs,
     .pipefd = &pipefd[0],
     .results = &results,
-    .timerfd = &timerfd;
+    .timerfd = &timerfd,
+    .watchdogfd = &watchdogfd,
   };
 
   /* initialize wiringpi */
   wiringPiSetup();
 
+  /*
+   * initialize new file descriptor timer used as timeout for stopping
+   * video recording
+   */
   if ((timerfd = timerfd_create(CLOCK_REALTIME, 0)) < 0) {
+    log_fatal("timerfd_create failed: %s\n", strerror(errno));
+    log_exit();
+    exit(1);
+  }
+
+  /* initialize new file descriptor timer used as timeout for watchdog */
+  if ((watchdogfd = timerfd_create(CLOCK_REALTIME, 0)) < 0) {
     log_fatal("timerfd_create failed: %s\n", strerror(errno));
     log_exit();
     exit(1);
@@ -176,6 +200,12 @@ int main(void) {
 
   if (pthread_create(&timer_thread, NULL, timer_func, &userdata)) {
     log_fatal("creating timer thread: %s\n", strerror(errno));
+    log_exit();
+    exit(1);
+  }
+
+  if (pthread_create(&watchdog_thread, NULL, watchdog_func, &userdata)) {
+    log_fatal("creating watchdog thread: %s\n", strerror(errno));
     log_exit();
     exit(1);
   }
@@ -243,9 +273,11 @@ int main(void) {
   write(pipefd[1], NULL, 8);
   close(pipefd[1]);
   close(timerfd);
+  close(watchdogfd);
 
   stop_watching_state();
   pthread_join(timer_thread, NULL);
+  pthread_join(watchdog_thread, NULL);
   pthread_join(network_thread, NULL);
   lstack_free(&results);
 
@@ -270,7 +302,7 @@ int main(void) {
  */
 void *network_func(void *param) {
   struct user_data *userdata = param;
-  int sockfd
+  int sockfd;
   int rc;
   int len;
   int valopt;
@@ -351,7 +383,7 @@ void *network_func(void *param) {
     }
   }
 
-  len = asprintf(&msg, "/S/templog");
+  len = asprintf(&msg, "/S/templog|check_watchdog");
   if (len < 0) {
     log_error("in network_func: asprintf error: %s\n", strerror(errno));
     close(sockfd);
@@ -378,10 +410,11 @@ void *network_func(void *param) {
   p[0].revents = 0;
   p[0].events = POLLIN|POLLPRI;
   p[1] = p[0];
-  p[1].fd = userdata->pipefd[0];
+  p[1].fd = *userdata->pipefd;
 
   while (1) {
-    if (poll(p, 2, -1)) {
+    if (poll(p, 2, -1) > 0) {
+
       // if POLLIN or POLLPRI bit is set in revents, it is time to exit
       if (p[1].revents & (POLLIN|POLLPRI)) {
         break;
@@ -656,6 +689,13 @@ void *network_func(void *param) {
               fclose(subtitles);
             }
             free(text);
+          } else if (!strncasecmp("check_watchdog", event, len)) { // handle check_watchdog event
+            // Set watchdog timer interval to 60 secs
+            reset_timer(*userdata->watchdogfd, 0, 60);
+            atomic_store_explicit(&watchdog_fails, 0, memory_order_release);
+
+            // Send core_watchdog event to server to verifiy
+            send_issue(NULL, userdata->configs, "/E/core_watchdog");
           } else if (!strncasecmp("subscribed", event, len)) { // handle subscribed event
             _log_debug("received message \"/E/subscribed\", sending \"/R/subscribed\" back.\n");
             len = asprintf(&msg, "/R/subscribed");
@@ -703,6 +743,96 @@ void *network_func(void *param) {
 }
 
 /*
+ * send_issue function sends a query to Serial Handler and if response is
+ * non-zero wait for response, allocate memory and populate response
+ */
+int send_issue(char **response, struct config *configs, char *issue) {
+  int fd;
+  int rc;
+  int len;
+  struct sockaddr_un addr;
+  char buf[BUFSIZ];
+  char *tmp;
+  char *result;
+  socklen_t addrlen;
+  size_t total_size, offset;
+
+  if (issue == NULL || issue[0] == '\0') return 0;
+
+  // create new socket and set returned file descriptor to fd
+  if ((fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
+    log_error("in send_issue: socket error: %s\n", strerror(errno));
+    return 1;
+  }
+
+  // populate addr struct configured with unix sockets
+  memset(&addr, 0, sizeof(addr));
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, configs->sock_path, sizeof(addr.sun_path)-1);
+  addrlen = sizeof(struct sockaddr_un);
+
+  // connect in blocking mode
+  if (connect(fd, (struct sockaddr*) &addr, addrlen) == -1) {
+    log_error("in send_issue: connect error: %s\n", strerror(errno));
+    close(fd);
+    return 1;
+  }
+
+  // send query to Serial Handler
+  len = strlen(issue);
+  if ((rc = send(fd, issue, len, MSG_NOSIGNAL)) != len) {
+    if (rc > 0) log_error("in send_issue: partial write (%d of %d)\n", rc, len);
+    else {
+      log_error("in send_issue: send error: %s\n", strerror(errno));
+      close(fd);
+      return 1;
+    }
+  }
+
+  // if response pointer is invalid, we do not have to wait for response
+  // tell peer to close connection
+  if (response == NULL) {
+    close(fd);
+    return 0;
+  }
+
+  // receive response and allocate memory for it
+  total_size = 0;
+  offset = 0;
+  result = NULL;
+  while ((rc = recv(fd, buf, BUFSIZ-1, 0)) > 0) {
+    buf[rc] = '\0';
+    total_size += rc+1;
+
+    // we use another pointer tmp to not "lose" the old pointer to previous data
+    // (if realloc fails) thus causing a memory leak
+    tmp = realloc(result, total_size * sizeof(char));
+    if (tmp == NULL) {
+      log_error("in send_issue: realloc error: %s\n", strerror(errno));
+      free(result);
+      close(fd);
+      return 1;
+    } else {
+      result = tmp;
+    }
+
+    // concat memory block in buf to result
+    memcpy(result + offset, buf, rc+1);
+    offset += strnlen(buf, rc);
+  }
+  if (rc < 0) {
+    log_error("in send_issue: recv error: %s\n", strerror(errno));
+    free(result);
+    close(fd);
+    return 1;
+  }
+  *response = result;
+
+  close(fd);
+  return 0;
+}
+
+/*
  * Timer function is called when timer runs out. It will stop recording.
  * This happens only once timer has not been reset within
  * the specified timer_value (which is five seconds)
@@ -713,21 +843,21 @@ void *timer_func(void *param) {
 
   memset(&p, 0, sizeof(p));
 
-  p[0].fd = userdata->timerfd;
+  p[0].fd = *userdata->timerfd;
   p[0].revents = 0;
   p[0].events = POLLIN|POLLPRI;
   p[1] = p[0];
-  p[1].fd = userdata->pipefd[0];
+  p[1].fd = *userdata->pipefd;
 
   while (1) {
-    if (poll(p, 2, -1)) {
+    if (poll(p, 2, -1) > 0) {
       // if POLLIN or POLLPRI bit is set in revents, it is time to exit
       if (p[1].revents & (POLLIN|POLLPRI)) {
         break;
       }
 
       // create a stop hook which will make picam stop recording
-      read(userdata->timerfd, NULL, 8);
+      read(*userdata->timerfd, NULL, 8);
       if (atomic_load(&rec)) {
         if (touch(userdata->configs->stop_hook)) {
           log_fatal("could not create stop recording hook (%s)\n", strerror(errno));
@@ -748,21 +878,128 @@ void *timer_func(void *param) {
 }
 
 /*
- * Reset timer used in motion detection system.
+ * Reset timerfd, these timers are used in
+ * motion detection system and watchdog system
  */
-void reset_timer(int timerfd) {
+void reset_timer(int timerfd, int secs, int isecs) {
   struct itimerspec timer_value;
 
-  bzero(&timer_value, sizeof(timer_value)); // Set to five seconds and non-recurring
-  timer_value.it_value.tv_sec = 5;
+  /*
+   * Set timer_value to a delay of secs seconds
+   * If isecs is set to a value > 0 this timer will
+   * be recurring
+   */
+  memset(&timer_value, 0, sizeof(timer_value));
+  timer_value.it_value.tv_sec = secs;
   timer_value.it_value.tv_nsec = 0;
-  timer_value.it_interval.tv_sec = 0;
+  timer_value.it_interval.tv_sec = isecs;
   timer_value.it_interval.tv_nsec = 0;
 
   if (timerfd_settime(timerfd, 0, &timer_value, NULL) != 0) {
     log_error("timerfd_settime failed: %s\n", strerror(errno));
     return;
   }
+}
+
+/*
+ * Watchdog function is called when watchdog timer runs out.
+ * Depending on the value of watchdog_fails different actions
+ * will be issued. If the value is equal to three the network
+ * connection will be restarted. If the value is equal to five
+ * a full system reboot will be issued.
+ */
+void *watchdog_func(void *param) {
+  struct user_data *userdata = param;
+  struct pollfd p[2];
+
+  memset(&p, 0, sizeof(p));
+
+  p[0].fd = *userdata->watchdogfd;
+  p[0].revents = 0;
+  p[0].events = POLLIN|POLLPRI;
+  p[1] = p[0];
+  p[1].fd = *userdata->pipefd;
+
+  while (1) {
+    if (poll(p, 2, -1) > 0) {
+      // if POLLIN or POLLPRI bit is set in revents, it is time to exit
+      if (p[1].revents & (POLLIN|POLLPRI)) {
+        break;
+      }
+
+      read(*userdata->watchdogfd, NULL, 8);
+      int prev_value = atomic_fetch_add_explicit(&watchdog_fails, 1, memory_order_relaxed);
+      switch (prev_value) {
+        case 3: // Perform restart of network
+        {
+          int sockfd;
+          struct ifreq ifr;
+
+          if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+            log_error("in watchdog_func: socket(AF_INET, SOCK_DGRAM, 0) error: %s\n", strerror(errno));
+            break;
+          }
+
+          memset(&ifr, 0, sizeof(ifr));
+          strncpy(ifr.ifr_name, "wlan0", IFNAMSIZ);
+
+          // bring wlan0 interface down
+          ifr.ifr_flags &= ~IFF_UP;
+          ioctl(sockfd, SIOCSIFFLAGS, &ifr);
+
+          // wait a bit
+          sleep(5);
+
+          // bring wlan0 interface up
+          ifr.ifr_flags |= IFF_UP;
+          ioctl(sockfd, SIOCSIFFLAGS, &ifr);
+          close(sockfd);
+        }
+        break;
+        case 5: // Perform full reboot of system
+        {
+          int reboot_status;
+          pid_t reboot_pid;
+
+          if ((reboot_pid = fork()) == 0) {
+              execlp("/sbin/reboot", "/sbin/reboot", NULL);
+              log_fatal("in watchdog_func: execlp error: %s\n", strerror(errno));
+              log_exit();
+              exit(1); /* never reached if execlp succeeds. */
+          }
+
+          if (reboot_pid < 0) {
+            log_error("in watchdog_func: fork error: %s\n", strerror(errno));
+            log_warn("could not spawn reboot process, performing hard reset.\n");
+            log_exit();
+            sync();
+            reboot(RB_AUTOBOOT);
+          }
+
+          waitpid(reboot_pid, &reboot_status, 0);
+          if (!WIFEXITED(reboot_status)) {
+            log_warn("reboot process did not exit sanely, performing hard reset.\n");
+            log_exit();
+            sync();
+            reboot(RB_AUTOBOOT);
+          }
+
+          if (WEXITSTATUS(reboot_status)) {
+            log_warn("reboot process exited with error, performing hard reset.\n");
+            log_exit();
+            sync();
+            reboot(RB_AUTOBOOT);
+          } else {
+            log_info("performing full system reboot.\n");
+          }
+        }
+        break;
+      }
+    }
+  }
+  close(userdata->pipefd[0]);
+
+  return NULL;
 }
 
 /*
@@ -784,7 +1021,8 @@ void interrupt_callback(void *param) {
 
   // log motion event to database using log library
   if (digitalRead(userdata->configs->pir_input) == HIGH) {
-    reset_timer();
+    // Set timer to 5 seconds and non-recurring
+    reset_timer(*userdata->timerfd, 5, 0);
     if (atomic_compare_exchange_weak(&rec, (_Bool[]) { false }, true)) {
       if (touch(userdata->configs->start_hook)) {
         log_fatal("could not create start recording hook (%s)\n", strerror(errno));
@@ -795,7 +1033,7 @@ void interrupt_callback(void *param) {
     if (do_log) log_msg_level(LOG_LEVEL_INFO, rawtime, "pir sensor", "rising\n");
   } else {
     if (atomic_compare_exchange_weak(&rec, (_Bool[]) { true }, true)) {
-      reset_timer();
+      reset_timer(*userdata->timerfd, 5, 0);
     }
 
     if (do_log) log_msg_level(LOG_LEVEL_INFO, rawtime, "pir sensor", "falling\n");

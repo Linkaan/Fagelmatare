@@ -1,3 +1,5 @@
 -------------------------
  Fagelmatare Core - TODO
 -------------------------
+
+Make pipefd logic thread-safe (on close)

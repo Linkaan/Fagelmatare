@@ -56,6 +56,7 @@ void *watch_for_file_creation(watch_target *target) {
   int fd;
   int wd;
   int status;
+  int err;
   int dir_strlen;
   char buffer[EVENT_BUF_LEN];
   char *dir = target->dir;
@@ -71,14 +72,17 @@ void *watch_for_file_creation(watch_target *target) {
   }
 
   struct stat st;
-  int err = stat(dir, &st);
+  AddInotify:
+  err = stat(dir, &st);
   if (err == -1) {
     if (errno == ENOENT) {
-      log_fatal("state directory (%s) does not exist\n", dir);
+      log_warn("hook target directory (%s) doesn't exist, retrying in one second.\n", dir);
+      sleep(1);
+      goto AddInotify;
     } else {
       log_fatal("stat failed (%s)\n", strerror(errno));
+      exit(1);
     }
-    exit(1);
   } else {
     if (!S_ISDIR(st.st_mode)) {
       log_fatal("state path (%s) is not a directory\n", dir);
