@@ -52,6 +52,11 @@ Do the same procedure for the slave as for the master but remember to download f
 
 ## Configuring our master
 
+SSH into your master RPi (procedure to retrieve IP of RPi is described above):
+```bash
+$ ssh tc@<replace with IP of RPi>
+```
+
 ### Enabling camera
 
 We need to enable the camera on our master RPi. We must modify our config.txt file so first we mount the boot partition and then open our config.txt file:
@@ -94,7 +99,7 @@ $ sudo reboot
 
 ### Building and configuring crosstool-ng
 
-We want to setup our cross compiler to be able to compile the software for our specific RPi architecture. We need to install a few packages that are required to build crosstool-ng which is the cross compiler that we are going to use.
+We want to setup our cross compiler to be able to compile the software for our specific RPi architecture. We need to install a few packages that are required to build crosstool-ng which is the cross compiler that we are going to use. This procedure is done on your main Linux machine.
 
 When we try to configure the cross compiler, it should inform about any missing dependencies that you need to install. On debian based systems we start by installing the following packages:
 ```bash
@@ -110,7 +115,7 @@ Next we untar crosstool-ng and configure it.
 ```bash
 $ tar xvf crosstool-ng-*.tar.xz
 $ cd crosstool-ng
-$ ./configure --prefix=~/master_toolchain/cross
+$ ./configure --prefix=$HOME/master_toolchain/cross
 ```
 If configure completes without any errors we can compile it, otherwise install any dependencies it says are missing.
 ```bash
@@ -191,7 +196,42 @@ Since the architecture for RPi generation 1 and generation 2 are different we ne
 
 Now we save our configration and build crosstool-ng with the settings we chose.
 ```bash
-$ sudo chown -R $(whoami) ~/master_toolchain/cross
+$ sudo chown -R $(whoami) $HOME/master_toolchain/cross
 $ ct-ng build
 ```
 
+### Testing our cross compiler
+
+Before we start building our main software, we want to do a quick sanity check of our ARM compiler. We change the PATH env variable and export CCPREFIX to be able to compile:
+```bash
+$ export PATH=$PATH:$HOME/master_toolchain/cross
+$ export CCPREFIX="$HOME/master_toolchain/cross/x-tools/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-"
+```
+If everything is setup correctly you should be able to get the current version of the ARM compiler:
+```bash
+$ arm-unknown-linux-gnueabi-gcc --version
+```
+Now we try to build a simple hello world program in C. Open test.c in your favourite editor (vim, nano, emacs) and add the following content:
+```c
+#include <stdio.h>
+
+int main() {
+    printf("Hello, world!\n");
+    return 0;
+}
+```
+Now we try building our "test" binary and copying it to the master RPi.
+```bash
+$ arm-unknown-linux-gnueabi-gcc -o test test.c
+$ rsync -rav test pi@<replace with IP of RPi>:test
+```
+SSH into the RPi with password "piCore" and run the program:
+```bash
+$ ssh tc@<replace with IP of RPi>
+$ sudo chmod +x test
+$ test
+Hello, world!
+```
+If the program works it will display "Hello, world!" and you're ready to compile our main software. If it doesn't work make sure you configured the cross compiler correctly.
+
+### Compiling ffmpeg and picam
