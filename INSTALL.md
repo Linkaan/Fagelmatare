@@ -103,18 +103,31 @@ We want to setup our cross compiler to be able to compile the software for our s
 
 When we try to configure the cross compiler, it should inform about any missing dependencies that you need to install. On debian based systems we start by installing the following packages:
 ```bash
-$ sudo apt-get install flex bison automake gperf libtool patch texinfo ncurses-dev help2man
+$ sudo apt-get update
+$ sudo apt-get install flex bison automake gperf libtool libtool-bin patch texinfo ncurses-dev help2man
 ```
 We create a new directory for our master toolchain.
 ```bash
 $ mkdir ~/master_toolchain
 $ cd ~/master_toolchain
 ```
-Download the latest version of crosstool-ng from <http://crosstool-ng.org/download/crosstool-ng/> (version 1.22.0 as of right now)
-Next we untar crosstool-ng and configure it.
+Download the latest release version of crosstool-ng from <http://crosstool-ng.org/download/crosstool-ng/>. **NOTE** the current version available as of right now (1.22.0) doesn't work because of 404 errors when trying to build crosstool-ng version. If there is a more recent version available than 1.22.0 try that otherwise we have to download from the development branch by cloning the git repository:
+```bash
+$ git clone https://github.com/crosstool-ng/crosstool-ng
+```
+We also need to generate our configure file if we downloaded the development branch:
+```bash
+$ cd crosstool-ng
+$ ./bootstrap
+```
+Otherwise if you downloaded the release version just untar the tar.xz archive.
 ```bash
 $ tar xvf crosstool-ng-*.tar.xz
 $ cd crosstool-ng
+```
+
+Next whether we downloaded crosstool-ng from the development branch or the latest working release we want to configure our toolchain:
+```bash
 $ ./configure --prefix=$HOME/master_toolchain/cross
 ```
 If configure completes without any errors we can compile it, otherwise install any dependencies it says are missing.
@@ -124,6 +137,7 @@ $ sudo make install
 ```
 Ok, now we need to configure the cross compiler to be able to compile for our RPi architecture.
 ```bash
+$ export PATH=$PATH:$HOME/master_toolchain/cross/bin
 $ cd ~/master_toolchain
 $ mkdir ctng
 $ cd ctng
@@ -134,7 +148,7 @@ Since the architecture for RPi generation 1 and generation 2 are different we ne
 
 - Paths and misc options
     - Check "Try features marked as EXPERIMENTAL"
-    - Set "Prefix directory" to "/opt/cross/x-tools/${CT_TARGET}"
+    - Set "Prefix directory" to "${HOME}/master_toolchain/cross/x-tools/${CT_TARGET}"
     - (OPTIONAL) Set "Number of parallel jobs" to amount of cores your processor has
 - Target options
     - Set "Target Architecture" to "arm"
@@ -166,7 +180,7 @@ Since the architecture for RPi generation 1 and generation 2 are different we ne
 
 - Paths and misc options
     - Check "Try features marked as EXPERIMENTAL"
-    - Set "Prefix directory" to "/opt/cross/x-tools/${CT_TARGET}"
+    - Set "Prefix directory" to "${HOME}/master_toolchain/cross/x-tools/${CT_TARGET}"
     - (OPTIONAL) Set "Number of parallel jobs" to amount of cores your processor has
 - Target options
     - Set "Target Architecture" to "arm"
@@ -202,9 +216,9 @@ $ ct-ng build
 
 ### Testing our cross compiler
 
-Before we start building our main software, we want to do a quick sanity check of our ARM compiler. We change the PATH env variable and export CCPREFIX to be able to compile:
+Before we start building our main software, we want to do a quick sanity check of our ARM compiler. We export CCPREFIX to be able to compile and add our prefix directory to the path:
 ```bash
-$ export PATH=$PATH:$HOME/master_toolchain/cross
+$ export PATH=$PATH:$HOME/master_toolchain/cross/x-tools/arm-unknown-linux-gnueabi/bin
 $ export CCPREFIX="$HOME/master_toolchain/cross/x-tools/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-"
 ```
 If everything is setup correctly you should be able to get the current version of the ARM compiler:
