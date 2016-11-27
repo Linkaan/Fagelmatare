@@ -243,9 +243,79 @@ SSH into the RPi with password "piCore" and run the program:
 ```bash
 $ ssh tc@<replace with IP of RPi>
 $ sudo chmod +x test
-$ test
+$ ./test
 Hello, world!
 ```
 If the program works it will display "Hello, world!" and you're ready to compile our main software. If it doesn't work make sure you configured the cross compiler correctly.
 
 ### Compiling ffmpeg and picam
+
+All binaries and header files will go into the `~/master_toolchain/pi/build` directory that we must create. We will also save it into a environment variable called `$PIBUILD`:
+```bash
+$ export PIBUILD=$HOME/master_toolchain/pi/build
+$ mkdir -p $PIBUILD
+$ cd ~/master_toolchain/pi
+```
+
+### Building fdk-aac
+
+Download the latest version of fdk-aac from <http://sourceforge.net/projects/opencore-amr/>. Then let's unpack the source code:
+```bash
+$ tar zxvf fdk-aac-*.tar.gz
+$ cd fdk-aac-*
+```
+Next we need to configure fdk-aac to use our cross compiler and to put the files into our `$PIBUILD` directory. Then we can build fdk-aac:
+```bash
+$ CC=${CCPREFIX}gcc CXX=${CCPREFIX}g++ ./configure --host=arm-rpi-linux-gnueabi --prefix=$PIBUILD
+$ make
+$ make install
+```
+### Copying dependencies
+
+We need to copy all the required dependencies from our RPi so that we can build ffmpeg. Let's put this content in the `~/master_toolchain/pi/usr` directory that we must create along with subdirectories `include` and `lib`:
+```bash
+$ export PIUSR=$HOME/master_toolchain/pi/usr
+$ mkdir $PIUSR
+$ cd $PIUSR
+$ mkdir include lib
+```
+Now we can copy all the dependencies that are required to build ffmpeg and picam using rsync (password is `piCore`):
+```bash
+$ rsync -rav tc@<replace with IP of RPi>:/tmp/tcloop/libasound-dev/usr/local/include/alsa/ $PIUSR/include/alsa/
+$ rsync -rav tc@<replace with IP of RPi>:/tmp/tcloop/libasound/usr/local/lib/libasound.so* $PIUSR/lib/
+```
+
+### Building ffmpeg
+
+Now we can clone and build ffmpeg and configure it to use fdk-aac library and alsa:
+```bash
+$ cd ~/master_toolchain/pi
+$ git clone git://source.ffmpeg.org/ffmpeg.git
+$ cd ffmpeg
+$ PKG_CONFIG_PATH=$PKG_CONFIG_PATH:$PIBUILD/lib/pkgconfig CC=${CCPREFIX}gcc CXX=${CCPREFIX}g++ ./configure --enable-cross-compile --cross-prefix=${CCPREFIX} --arch=armel --target-os=linux --prefix=$PIBUILD --extra-cflags="-I$PIBUILD/include -I$PIUSR/include -fPIC" --extra-ldflags="-L$PIBUILD/lib -L$PIUSR/lib -fPIC" --enable-libfdk-aac --pkg-config=`which pkg-config`
+```
+Make sure that "Enabled indevs" has "alsa" and "Enabled encoders" has "libfdk_aac". If not make sure you followed all the steps correctly. Next we want to build ffmpeg with the same amount of parallell jobs as we have cores on our machine. Type the following command to get the amount of cores on your machine if you don't know:
+```bash
+$ cat /proc/cpuinfo | grep processor | wc -l
+```
+Next we build ffmpeg:
+```bash
+$ make -j <num cores>
+$ make install
+```
+
+### Downloading RPi firmware
+
+To be able to build libilclient we need to download the source code for the RPi firmware:
+```bash
+$ cd ~/master_toolchain/pi
+$ git clone https://github.com/raspberrypi/firmware
+```
+We want to copy the content of `opt/vc/` into the directory `~/master_toolchain/pi/opt/vc/`:
+```bash
+$ export PIOPT=$HOME/master_toolchain/pi/opt/vc
+$ mkdir -p $PIOPT
+$ rsync -rav ~/master_toolchain/firmware/opt/vc/ $PIOPT/
+```
+
+### Building libilclient
