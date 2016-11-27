@@ -111,7 +111,7 @@ We create a new directory for our master toolchain.
 $ mkdir ~/master_toolchain
 $ cd ~/master_toolchain
 ```
-Download the latest release version of crosstool-ng from <http://crosstool-ng.org/download/crosstool-ng/>. **NOTE** the current version available as of right now (1.22.0) doesn't work because of 404 errors when trying to build crosstool-ng version. If there is a more recent version available than 1.22.0 try that otherwise we have to download from the development branch by cloning the git repository:
+Download the latest release version of crosstool-ng from <http://crosstool-ng.org/download/crosstool-ng/>. **NOTE** the current version available as of right now (1.22.0) doesn't work because of 404 errors when trying to build crosstool-ng. If there is a more recent version available than 1.22.0 try that otherwise we have to download from the development branch by cloning the git repository:
 ```bash
 $ git clone https://github.com/crosstool-ng/crosstool-ng
 ```
@@ -165,13 +165,13 @@ Since the architecture for RPi generation 1 and generation 2 are different we ne
     - Set "Target OS" to "linux"
 - Binary utilities
     - Set "Binary format" to "ELF"
-    - Set "binutils version" to "2.25.1"
+    - Set "binutils version" to "2.26"
 - C-library
     - Set "C library" to "glibc"
-    - Set "glibc version" to "2.22"
+    - Set "glibc version" to "2.24"
 - C compiler
     - Check "Show Linaro versions"
-    - Set "gcc version" to "linaro-4.9-2015.06"
+    - Set "gcc version" to "linaro-5.2-2015.11-2"
     - Set "gcc extra config" to "--with-float=hard"
     - Check "Link libstdc++ statically into the gcc binary"
     - Check "C++" under "Additional supported languages"
@@ -197,13 +197,13 @@ Since the architecture for RPi generation 1 and generation 2 are different we ne
     - Set "Target OS" to "linux"
 - Binary utilities
     - Set "Binary format" to "ELF"
-    - Set "binutils version" to "2.25.1"
+    - Set "binutils version" to "2.26"
 - C-library
     - Set "C library" to "glibc"
-    - Set "glibc version" to "2.22"
+    - Set "glibc version" to "2.24"
 - C compiler
     - Check "Show Linaro versions"
-    - Set "gcc version" to "linaro-4.9-2015.06"
+    - Set "gcc version" to "linaro-5.2-2015.11-2"
     - Set "gcc extra config" to "--with-float=hard"
     - Check "Link libstdc++ statically into the gcc binary"
     - Check "C++" under "Additional supported languages"
@@ -218,12 +218,12 @@ $ ct-ng build
 
 Before we start building our main software, we want to do a quick sanity check of our ARM compiler. We export CCPREFIX to be able to compile and add our prefix directory to the path:
 ```bash
-$ export PATH=$PATH:$HOME/master_toolchain/cross/x-tools/arm-unknown-linux-gnueabi/bin
+$ export PATH=$PATH:$HOME/master_toolchain/cross/x-tools/arm-rpi-linux-gnueabihf/bin
 $ export CCPREFIX="$HOME/master_toolchain/cross/x-tools/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-"
 ```
 If everything is setup correctly you should be able to get the current version of the ARM compiler:
 ```bash
-$ arm-unknown-linux-gnueabi-gcc --version
+$ arm-rpi-linux-gnueabihf-gcc --version
 ```
 Now we try to build a simple hello world program in C. Open test.c in your favourite editor (vim, nano, emacs) and add the following content:
 ```c
@@ -236,7 +236,7 @@ int main() {
 ```
 Now we try building our "test" binary and copying it to the master RPi.
 ```bash
-$ arm-unknown-linux-gnueabi-gcc -o test test.c
+$ arm-rpi-linux-gnueabihf-gcc -o test test.c
 $ rsync -rav test pi@<replace with IP of RPi>:test
 ```
 SSH into the RPi with password "piCore" and run the program:
