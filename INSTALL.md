@@ -319,3 +319,16 @@ $ rsync -rav ~/master_toolchain/firmware/opt/vc/ $PIOPT/
 ```
 
 ### Building libilclient
+
+Because libilclient is normally built on the RPi itself, we need to change the Makefile to use our paths. With a bit of magic we can use `sed` to do this:
+```bash
+$ sed -i 's/\opt\//${OPT}\//g' $PIOPT/hello_pi/Makefile.include
+```
+Now we can simply set the environment variable OPT to the path of our `opt` directory and build ilclient:
+```bash
+$ cd $PIOPT/hello_pi/libs/ilclient
+$ CC=${CCPREFIX}gcc OPT=$HOME/master_toolchain/pi/opt make
+```
+
+### Building picam
+
