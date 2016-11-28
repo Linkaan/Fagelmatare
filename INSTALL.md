@@ -83,9 +83,8 @@ chmod 777 /dev/vchiq
 ```
 ### Installing dependencies
 
-We need to make a backup of the filesystem to keep our changes after the system shuts down. But first we want to install a few dependencies that we will use in our software later. We want to install **alsa-utils.tcz**, **libasound-dev.tcz**, **fontconfig-dev.tcz**, **harfbuzz-dev.tcz** and **rsync.tcz**.
+We need to make a backup of the filesystem to keep our changes after the system shuts down. But first we want to install a few dependencies that we will use in our software later. We want to install **libasound-dev.tcz**, **fontconfig-dev.tcz**, **harfbuzz-dev.tcz** and **rsync.tcz**.
 ```bash
-$ tce-load -wi alsa-utils.tcz
 $ tce-load -wi libasound-dev.tcz
 $ tce-load -wi harfbuzz-dev.tcz
 $ tce-load -wi fontconfig-dev.tcz
@@ -237,7 +236,7 @@ int main() {
 Now we try building our "test" binary and copying it to the master RPi.
 ```bash
 $ arm-rpi-linux-gnueabihf-gcc -o test test.c
-$ rsync -rav test pi@<replace with IP of RPi>:test
+$ rsync -rav test tc@<replace with IP of RPi>:test
 ```
 SSH into the RPi with password "piCore" and run the program:
 ```bash
@@ -322,13 +321,57 @@ $ rsync -rav ~/master_toolchain/firmware/opt/vc/ $PIOPT/
 
 Because libilclient is normally built on the RPi itself, we need to change the Makefile to use our paths. With a bit of magic we can use `sed` to do this:
 ```bash
-$ sed -i 's/\opt\//${OPT}\//g' $PIOPT/hello_pi/Makefile.include
+$ sed -i 's/\opt\//${OPT}\//g' $PIOPT/src/hello_pi/Makefile.include
 ```
 Now we can simply set the environment variable OPT to the path of our `opt` directory and build ilclient:
 ```bash
-$ cd $PIOPT/hello_pi/libs/ilclient
+$ cd $PIOPT/src/hello_pi/libs/ilclient
 $ CC=${CCPREFIX}gcc OPT=$HOME/master_toolchain/pi/opt make
 ```
 
 ### Building picam
 
+Now let's download the source code for picam from github so that we can build it:
+```bash
+$ cd ~/master_toolchain/pi
+$ git clone https://github.com/iizukanao/picam
+$ cd picam
+```
+Picam is normally built on the RPi so as we did above with `libilclient` we need to modify the Makefile for picam. This time it is easier to open the Makefile in an editor. We need to do the following changes:
+```diff
+-1 CC
+-2 CFLAGS=-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g -DHAVE_LIBOPENMAX=2 -DOMX -DOMX_SKIP64BIT -ftree-vectorize -DUSE_EXTERNAL_OMX -DHAVE_LIBBCM_HOST -DUSE_EXTERNAL_LIBBCM_HOST -DUSE_VCHIQ_ARM -Wno-psabi -I/opt/vc/include/ -I/opt/vc/include/interface/vcos/pthreads -I/opt/vc/include/interface/vmcs_host/linux
+-I/opt/vc/src/hello_pi/libs/ilclient `freetype-config --cflags` `pkg-config --cflags harfbuzz fontconfig libavformat libavcodec` -I/usr/include/fontconfig -g -Wno-deprecated-declarations -O3
++2 CFLAGS=-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g -DHAVE_LIBOPENMAX=2 -DOMX -DOMX_SKIP64BIT -ftree-vectorize -DUSE_EXTERNAL_OMX -DHAVE_LIBBCM_HOST -DUSE_EXTERNAL_LIBBCM_HOST -DUSE_VCHIQ_ARM -Wno-psabi -I${OPT}/vc/include/ -I${OPT}/vc/include/interface/vcos/pthreads -I${OPT}/vc/include/interface/vmcs_host/linux -I${OPT}/vc/src/hello_pi/libs/ilclient -I${OPT}/include/freetype2 -I${OPT}/include/libpng16 -I${OPT}/include/harfbuzz -I${OPT}/include/glib-2.0 -I${OPT}/lib/glib-2.0/include -I${OPT}/include -g -Wno-deprecated-declarations -O3
+-3 LDFLAGS=-g -Wl,--whole-archive -lilclient -L/opt/vc/lib/ -L/usr/local/lib -lGLESv2 -lEGL -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -lpthread -lrt -L/opt/vc/src/hello_pi/libs/ilclient -Wl,--no-whole-archive -rdynamic -lm -lcrypto -lasound `freetype-config --libs` `pkg-config --libs harfbuzz fontconfig libavformat libavcodec`
++3 LDFLAGS=-g -Wl,--whole-archive -lilclient -L${OPT}/vc/lib/ -L${USR}/lib -lGLESv2 -lEGL -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -lpthread -lrt -L${OPT}/vc/src/hello_pi/libs/ilclient -Wl,--no-whole-archive -rdynamic -lm -lcrypto -lasound -L${PIBUILD}/lib -lfreetype -lharfbuzz -lfontconfig -lfreetype -lavformat -lavcodec
+-4 DEP_LIBS=/opt/vc/src/hello_pi/libs/ilclient/libilclient.a
++4 DEP_LIBS=${OPT}/vc/src/hello_pi/libs/ilclient/libilclient.a
+-9 RASPBERRYPI=$(shell sh ./whichpi)
+-10 GCCVERSION=$(shell gcc --version | grep ^gcc | sed "s/.* //g")
+-12 # detect if we are compiling for RPi 1 or RPi 2 (or 3)
+-13 ifeq ($(RASPBERRYPI),Pi1)
+-14         CFLAGS += -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s
+-15 else
+-16 ifneq (,$(findstring 4.6.,$(GCCVERSION)))  # gcc version 4.6.x
+-17         CFLAGS += -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7-a
+-18 else  # other gcc versions
+-19         CFLAGS += -mfpu=neon-vfpv4 -mfloat-abi=hard -march=armv7-a -mtune=cortex-a7
+-20 endif
+-21 endif
+```
+Now we should be able to build picam:
+```bash
+$ CC=${CCPREFIX}gcc OPT=$HOME/master_toolchain/pi/opt USR=$HOME/master_toolchain/pi/usr make
+```
+If everything went well, we can strip the binary to save some disk space:
+```bash
+$ strip picam
+```
+
+### Testing picam
+
+Let's test picam before we package it into a `tcz` package so that we can see that it works. First we transfer picam to our RPi:
+```bash
+$ rsync -rav picam tc@<replace with IP of RPi>:picam
+```
