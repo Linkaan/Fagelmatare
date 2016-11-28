@@ -345,7 +345,7 @@ Picam is normally built on the RPi so as we did above with `libilclient` we need
 -2 CFLAGS=-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g -DHAVE_LIBOPENMAX=2 -DOMX -DOMX_SKIP64BIT -ftree-vectorize -DUSE_EXTERNAL_OMX -DHAVE_LIBBCM_HOST -DUSE_EXTERNAL_LIBBCM_HOST -DUSE_VCHIQ_ARM -Wno-psabi -I/opt/vc/include/ -I/opt/vc/include/interface/vcos/pthreads -I/opt/vc/include/interface/vmcs_host/linux -I/opt/vc/src/hello_pi/libs/ilclient `freetype-config --cflags` `pkg-config --cflags harfbuzz fontconfig libavformat libavcodec` -I/usr/include/fontconfig -g -Wno-deprecated-declarations -O3
 +2 CFLAGS=-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g -DHAVE_LIBOPENMAX=2 -DOMX -DOMX_SKIP64BIT -ftree-vectorize -DUSE_EXTERNAL_OMX -DHAVE_LIBBCM_HOST -DUSE_EXTERNAL_LIBBCM_HOST -DUSE_VCHIQ_ARM -Wno-psabi -I${OPT}/vc/include/ -I${OPT}/vc/include/interface/vcos/pthreads -I${OPT}/vc/include/interface/vmcs_host/linux -I${OPT}/vc/src/hello_pi/libs/ilclient -I${USR}/include/freetype2 -I${USR}/include/libpng16 -I${USR}/include/harfbuzz -I${USR}/include/glib-2.0 -I${USR}/lib/glib-2.0/include -I${USR}/include -I${USR}/include/fontconfig -I${PIBUILD}/include -g -Wno-deprecated-declarations -O3
 -3 LDFLAGS=-g -Wl,--whole-archive -lilclient -L/opt/vc/lib/ -L/usr/local/lib -lGLESv2 -lEGL -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -lpthread -lrt -L/opt/vc/src/hello_pi/libs/ilclient -Wl,--no-whole-archive -rdynamic -lm -lcrypto -lasound `freetype-config --libs` `pkg-config --libs harfbuzz fontconfig libavformat libavcodec`
-+3 LDFLAGS=-g -Wl,--whole-archive -lilclient -L${OPT}/vc/lib/ -L${USR}/lib -lGLESv2 -lEGL -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -lpthread -lrt -L${OPT}/vc/src/hello_pi/libs/ilclient -Wl,--no-whole-archive -rdynamic -lm -lcrypto -lasound -L${PIBUILD}/lib -lfreetype -lharfbuzz -lfontconfig -lfreetype -lavformat -lavcodec
++3 LDFLAGS=-g -Wl,--whole-archive -lilclient -L${PIBUILD}/lib -L${OPT}/vc/lib/ -L${USR}/lib -lGLESv2 -lbrcmGLESv2 -lEGL -lbrcmEGL -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -lglib-2.0 -lpcre -lbz2 -lgraphite2 -lexpat -lpthread -lrt -L${OPT}/vc/src/hello_pi/libs/ilclient -Wl,--no-whole-archive -rdynamic -lm -lcrypto -lasound -lfreetype -lz -lpng -lharfbuzz -lfontconfig -lavformat -lavcodec -lfdk-aac -lswscale -lavutil -lavfilter -lswresample -lavdevice
 -4 DEP_LIBS=/opt/vc/src/hello_pi/libs/ilclient/libilclient.a
 +4 DEP_LIBS=${OPT}/vc/src/hello_pi/libs/ilclient/libilclient.a
 -9 RASPBERRYPI=$(shell sh ./whichpi)
@@ -370,9 +370,6 @@ If everything went well, we can strip the binary to save some disk space:
 $ strip picam
 ```
 
-### Testing picam
+### Packaging picam into a tcz package
 
-Let's test picam before we package it into a `tcz` package so that we can see that it works. First we transfer picam to our RPi:
-```bash
-$ rsync -rav picam tc@<replace with IP of RPi>:picam
-```
+
