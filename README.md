@@ -1,7 +1,7 @@
 # Fagelmatare Embedded Application
 
 ==================================
-[![ITG-Infoskarm GPLv3 License](https://img.shields.io/badge/licens-GPLv3_License-blue.svg)](LICENSE)
+[![Fagelmatare GPLv3 License](https://img.shields.io/badge/licens-GPLv3_License-blue.svg)](LICENSE)  
 An embedded project created to learn Linux and C. Feeds and records birds using a PIR sensor.
 
 Copyright (C) 2016 Linus Styrén <linus122xbb@gmail.com>
@@ -23,12 +23,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 The following hardware is required to use this software:
 
-* 3 Raspberry Pis (Can be any version of RPi, but for best results use a RPi2 or RPi3 as the database and web server and one as the master)
+* 3 Raspberry Pis (Can be any version of RPi, but for best results use a RPi2 or RPi3 as the database and web server and one as the master)  
 My configuration is:
  - RPi 3 for database
  - RPi 2 as master
  - RPi 0 as slave
-* A decently powerful linux server used to transcode the video streamed from the RPi 2 if you want to run this 24/7
+* A decently powerful linux server used to transcode the video streamed from the RPi 2 if you want to run this 24/7  
 The linux server is only necessary if you wish to stream to an online service such as ustream.tv
 * RPi SenseHat
 * RPi Camera Module
