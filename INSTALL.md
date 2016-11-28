@@ -83,11 +83,12 @@ chmod 777 /dev/vchiq
 ```
 ### Installing dependencies
 
-We need to make a backup of the filesystem to keep our changes after the system shuts down. But first we want to install a few dependencies that we will use in our software later. We want to install **libasound-dev.tcz**, **fontconfig-dev.tcz**, **harfbuzz-dev.tcz** and **rsync.tcz**.
+We need to make a backup of the filesystem to keep our changes after the system shuts down. But first we want to install a few dependencies that we will use in our software later. We want to install **libasound-dev.tcz**, **fontconfig-dev.tcz**, **harfbuzz-dev.tcz**, **openssl-dev.tcz** and **rsync.tcz**.
 ```bash
 $ tce-load -wi libasound-dev.tcz
 $ tce-load -wi harfbuzz-dev.tcz
 $ tce-load -wi fontconfig-dev.tcz
+$ tce-load -wi openssl-dev.tcz
 $ tce-load -wi rsync.tcz
 ```
 Now we have installed the dependencies for our software. Let's backup the filesystem and reboot.
@@ -278,10 +279,11 @@ $ mkdir $PIUSR
 $ cd $PIUSR
 $ mkdir include lib
 ```
-Now we can copy all the dependencies that are required to build ffmpeg and picam using rsync (password is `piCore`):
+Now we can copy all the RPi libraries that are required to build our main software, ffmpeg and picam. We use rsync for this (password is `piCore`):
 ```bash
-$ rsync -rav tc@<replace with IP of RPi>:/tmp/tcloop/libasound-dev/usr/local/include/alsa/ $PIUSR/include/alsa/
-$ rsync -rav tc@<replace with IP of RPi>:/tmp/tcloop/libasound/usr/local/lib/libasound.so* $PIUSR/lib/
+$ rsync -ravh -L tc@<replace with IP of RPi>:/usr/local/include/ $PIUSR/include/
+$ rsync -ravh -L tc@<replace with IP of RPi>:/usr/local/lib/ $PIUSR/lib/
+$ rsync -ravh -L tc@<replace with IP of RPi>:/usr/lib/ $PIUSR/lib/
 ```
 
 ### Building ffmpeg
@@ -340,9 +342,8 @@ $ cd picam
 Picam is normally built on the RPi so as we did above with `libilclient` we need to modify the Makefile for picam. This time it is easier to open the Makefile in an editor. We need to do the following changes:
 ```diff
 -1 CC
--2 CFLAGS=-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g -DHAVE_LIBOPENMAX=2 -DOMX -DOMX_SKIP64BIT -ftree-vectorize -DUSE_EXTERNAL_OMX -DHAVE_LIBBCM_HOST -DUSE_EXTERNAL_LIBBCM_HOST -DUSE_VCHIQ_ARM -Wno-psabi -I/opt/vc/include/ -I/opt/vc/include/interface/vcos/pthreads -I/opt/vc/include/interface/vmcs_host/linux
--I/opt/vc/src/hello_pi/libs/ilclient `freetype-config --cflags` `pkg-config --cflags harfbuzz fontconfig libavformat libavcodec` -I/usr/include/fontconfig -g -Wno-deprecated-declarations -O3
-+2 CFLAGS=-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g -DHAVE_LIBOPENMAX=2 -DOMX -DOMX_SKIP64BIT -ftree-vectorize -DUSE_EXTERNAL_OMX -DHAVE_LIBBCM_HOST -DUSE_EXTERNAL_LIBBCM_HOST -DUSE_VCHIQ_ARM -Wno-psabi -I${OPT}/vc/include/ -I${OPT}/vc/include/interface/vcos/pthreads -I${OPT}/vc/include/interface/vmcs_host/linux -I${OPT}/vc/src/hello_pi/libs/ilclient -I${OPT}/include/freetype2 -I${OPT}/include/libpng16 -I${OPT}/include/harfbuzz -I${OPT}/include/glib-2.0 -I${OPT}/lib/glib-2.0/include -I${OPT}/include -g -Wno-deprecated-declarations -O3
+-2 CFLAGS=-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g -DHAVE_LIBOPENMAX=2 -DOMX -DOMX_SKIP64BIT -ftree-vectorize -DUSE_EXTERNAL_OMX -DHAVE_LIBBCM_HOST -DUSE_EXTERNAL_LIBBCM_HOST -DUSE_VCHIQ_ARM -Wno-psabi -I/opt/vc/include/ -I/opt/vc/include/interface/vcos/pthreads -I/opt/vc/include/interface/vmcs_host/linux -I/opt/vc/src/hello_pi/libs/ilclient `freetype-config --cflags` `pkg-config --cflags harfbuzz fontconfig libavformat libavcodec` -I/usr/include/fontconfig -g -Wno-deprecated-declarations -O3
++2 CFLAGS=-DSTANDALONE -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS -DTARGET_POSIX -D_LINUX -fPIC -DPIC -D_REENTRANT -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -U_FORTIFY_SOURCE -Wall -g -DHAVE_LIBOPENMAX=2 -DOMX -DOMX_SKIP64BIT -ftree-vectorize -DUSE_EXTERNAL_OMX -DHAVE_LIBBCM_HOST -DUSE_EXTERNAL_LIBBCM_HOST -DUSE_VCHIQ_ARM -Wno-psabi -I${OPT}/vc/include/ -I${OPT}/vc/include/interface/vcos/pthreads -I${OPT}/vc/include/interface/vmcs_host/linux -I${OPT}/vc/src/hello_pi/libs/ilclient -I${USR}/include/freetype2 -I${USR}/include/libpng16 -I${USR}/include/harfbuzz -I${USR}/include/glib-2.0 -I${USR}/lib/glib-2.0/include -I${USR}/include -I${USR}/include/fontconfig -I${PIBUILD}/include -g -Wno-deprecated-declarations -O3
 -3 LDFLAGS=-g -Wl,--whole-archive -lilclient -L/opt/vc/lib/ -L/usr/local/lib -lGLESv2 -lEGL -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -lpthread -lrt -L/opt/vc/src/hello_pi/libs/ilclient -Wl,--no-whole-archive -rdynamic -lm -lcrypto -lasound `freetype-config --libs` `pkg-config --libs harfbuzz fontconfig libavformat libavcodec`
 +3 LDFLAGS=-g -Wl,--whole-archive -lilclient -L${OPT}/vc/lib/ -L${USR}/lib -lGLESv2 -lEGL -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -lpthread -lrt -L${OPT}/vc/src/hello_pi/libs/ilclient -Wl,--no-whole-archive -rdynamic -lm -lcrypto -lasound -L${PIBUILD}/lib -lfreetype -lharfbuzz -lfontconfig -lfreetype -lavformat -lavcodec
 -4 DEP_LIBS=/opt/vc/src/hello_pi/libs/ilclient/libilclient.a
@@ -362,7 +363,7 @@ Picam is normally built on the RPi so as we did above with `libilclient` we need
 ```
 Now we should be able to build picam:
 ```bash
-$ CC=${CCPREFIX}gcc OPT=$HOME/master_toolchain/pi/opt USR=$HOME/master_toolchain/pi/usr make
+$ CC=${CCPREFIX}gcc OPT=$HOME/master_toolchain/pi/opt USR=$HOME/master_toolchain/pi/usr PIBUILD=$PIBUILD make
 ```
 If everything went well, we can strip the binary to save some disk space:
 ```bash
