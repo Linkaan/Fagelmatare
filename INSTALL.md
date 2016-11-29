@@ -39,14 +39,16 @@ Once you're logged in we need to partition our SD card to add persistent storage
    tc@box:~$ sudo fdisk -u /dev/mmcblk0
    ```
    Now list partitions with 'p' command and write down the starting and ending  sectors of the second partition.
- 2. Delete second partition with `d` then recreate it with `n` command.
+2. Delete second partition with `d` then recreate it with `n` command.
    Use the same starting sector as deleted had and provide end sectore or size greater than deleted had having enough free space for Mounted Mode. When finished, exit fdisk with 'w' command. Now the partition size increased but file system size is not yet changed.
- 3. Reboot piCore. It is necessary to make Kernel aware of changes.
- 4. After reboot expand file system to the new partition boundaries with typing  the following command as root:
+3. Reboot piCore. It is necessary to make Kernel aware of changes.
+4. After reboot expand file system to the new partition boundaries with typing  the following command as root:
     ```bash
     tc@box:~$ sudo resize2fs /dev/mmcblk0p2
     ```
 ### Slave RPi
+
+If you are using a RPi zero as the slave you must have a USB ethernet adapter, however it is much easier to just configure the slave on the master RPi so that you can use ethernet.
 
 Do the same procedure for the slave as for the master but remember to download from the correct architecture. It will be armv6 if you're using a RPi model A, B, A+, B+ or zero) and armv7 for the second generation of RPi.
 
@@ -512,4 +514,40 @@ Now we need to download the firmware for the Atheros AR9271 chip. Again look at 
 ```bash
 tc@box:~$ tce-load -wi firmware.tcz
 ```
+We want to setup a static ip so we create a `/opt/wlan0.sh` file with the following content:
+```bash
+#!/bin/sh
+wpa_passphrase <replace with SSID> <replace with password> > /etc/wpa_supplicant.conf
+wpa_supplicant -i wlan0 -c /etc/wpa_supplicant.conf -B >/dev/null 2>&1
+ifconfig wlan0 <replace with IP for RPi> netmask <replace with netmask> up
+route add default gw <replace with gateway>
+echo nameserver 8.8.8.8 >> /etc/resolv.conf
+echo nameserver 8.8.4.4 >> /etc/resolv.conf
+```
+By default the netmask will be `255.255.255.0` but you need to configure this for your own network. Now make the script executable:
+```bash
+tc@box:~$ sudo chmod +x /opt/wlan0.sh
+```
+Make it run at boot by appending the following line to `/opt/bootlocal.sh`:
+```bash
+/opt/wlan0.sh 2>&1 >/tmp/wifi0.log
+```
+Now plug out the ethernet cable so we can test the wifi connection. To keep the changes after we do a backup and reboot:
+```bash
+tc@box:~$ filetool.sh -b
+tc@box:~$ sudo reboot
+```
+After the RPi has booted up, try to ping the IP address and make sure the connection works.
 
+### Setting up network over usb
+
+In order to communicate with the slave RPi we need to setup a network over usb. This is usually called tethering, because the slave RPi doesn't require a connection to the internet we don't need to share internet access and don't need to setup IP forwarding in the kernel.
+
+## Configuring our slave
+
+Again if you are using a RPi zero as the slave you must have a USB ethernet adapter, however it is much easier to just configure the slave on the master RPi so that you can use ethernet.
+
+Now SSH into the RPi (how to find the IP is described in the [Installing tiny core linux](#installing-tiny-core-linux) section):
+```bash
+$ ssh tc@<replace with IP of RPi>
+```
