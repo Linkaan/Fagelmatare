@@ -36,7 +36,7 @@ Once you're logged in we need to partition our SD card to add persistent storage
 
 1. Start fdisk partitiong tool as root:
    ```bash
-   $ sudo fdisk -u /dev/mmcblk0
+   tc@box:~$ sudo fdisk -u /dev/mmcblk0
    ```
    Now list partitions with 'p' command and write down the starting and ending  sectors of the second partition.
  2. Delete second partition with `d` then recreate it with `n` command.
@@ -44,7 +44,7 @@ Once you're logged in we need to partition our SD card to add persistent storage
  3. Reboot piCore. It is necessary to make Kernel aware of changes.
  4. After reboot expand file system to the new partition boundaries with typing  the following command as root:
     ```bash
-    $ sudo resize2fs /dev/mmcblk0p2
+    tc@box:~$ sudo resize2fs /dev/mmcblk0p2
     ```
 ### Slave RPi
 
@@ -61,9 +61,9 @@ $ ssh tc@<replace with IP of RPi>
 
 We need to enable the camera on our master RPi. We must modify our config.txt file so first we mount the boot partition and then open our config.txt file:
 ```bash
-$ sudo mkdir /boot
-$ sudo mount -t vfat /dev/mmcblk0p1 /boot/
-$ sudo vi /boot/config.txt
+tc@box:~$ sudo mkdir /boot
+tc@box:~$ sudo mount -t vfat /dev/mmcblk0p1 /boot/
+tc@box:~$ sudo vi /boot/config.txt
 ```
 Now we need to add the following parameters under the "[ALL]" section:
 ```
@@ -75,7 +75,7 @@ Basic usage of `vi` if you're not used to it: press i to enter edit mode, then a
 
 We also need to allow all users to access /dev/vchiq to use the camera. So we need to chmod of it everytime we boot by adding it to /opt/bootlocal.sh
 ```bash
-$ sudo vi /opt/bootlocal.sh
+tc@box:~$ sudo vi /opt/bootlocal.sh
 ```
 Append the following line to the file
 ```
@@ -85,16 +85,16 @@ chmod 777 /dev/vchiq
 
 We need to make a backup of the filesystem to keep our changes after the system shuts down. But first we want to install a few dependencies that we will use in our software later. We want to install **libasound-dev.tcz**, **fontconfig-dev.tcz**, **harfbuzz-dev.tcz**, **openssl-dev.tcz** and **rsync.tcz**.
 ```bash
-$ tce-load -wi libasound-dev.tcz
-$ tce-load -wi harfbuzz-dev.tcz
-$ tce-load -wi fontconfig-dev.tcz
-$ tce-load -wi openssl-dev.tcz
-$ tce-load -wi rsync.tcz
+tc@box:~$ tce-load -wi libasound-dev.tcz
+tc@box:~$ tce-load -wi harfbuzz-dev.tcz
+tc@box:~$ tce-load -wi fontconfig-dev.tcz
+tc@box:~$ tce-load -wi openssl-dev.tcz
+tc@box:~$ tce-load -wi rsync.tcz
 ```
 Now we have installed the dependencies for our software. Let's backup the filesystem and reboot.
 ```bash
-$ sudo filetool.sh -b
-$ sudo reboot
+tc@box:~$ sudo filetool.sh -b
+tc@box:~$ sudo reboot
 ```
 
 ### Building and configuring crosstool-ng
@@ -242,8 +242,8 @@ $ rsync -rav test tc@<replace with IP of RPi>:test
 SSH into the RPi with password "piCore" and run the program:
 ```bash
 $ ssh tc@<replace with IP of RPi>
-$ sudo chmod +x test
-$ ./test
+tc@box:~$ sudo chmod +x test
+tc@box:~$ ./test
 Hello, world!
 ```
 If the program works it will display "Hello, world!" and you're ready to compile our main software. If it doesn't work make sure you configured the cross compiler correctly.
@@ -382,6 +382,13 @@ We also need the libav libraries and libfdk-aac:
 ```bash
 $ rsync -ravh $PIBUILD/lib/ $PILIB/
 ```
+Because we want to use the timestamp and subtitle functions that picam offers we need to install a font to use. You can download any font as long as it is of the type `ttf` (I recommend to use the liberation font-family):
+```bash
+$ mkdir -p $PILIB/../fonts
+$ cd $PILIB/../fonts
+$ wget https://fedorahosted.org/releases/l/i/liberation-fonts/liberation-fonts-ttf-2.00.1.tar.gz
+$ tar zxvf liberation-fonts-ttf-2.00.1.tar.gz
+```
 Lastly we also need to copy our picam binary to a bin folder:
 ```bash
 $ mkdir -p $PILIB/../bin
@@ -396,4 +403,66 @@ Then we can make our `picam.tcz` package by running:
 $ mksquashfs $HOME/master_toolchain/pi/picam/squashfs/ picam.tcz
 ```
 
+### Testing picam.tcz
+
+Before we install the picam package we will test that it works. Let's copy it over to our RPi using rsync:
+```bash
+$ rsync -ravh $HOME/master_toolchain/pi/picam/picam.tcz tc@<replace with IP of RPi>:picam.tcz
+```
+Now SSH into the RPi and we will load the tcz package:
+```bash
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ tce-load -i picam.tcz
+```
+Now we will try to run picam:
+```bash
+tc@box:~$ /usr/local/bin/picam --time &
+```
+If picam reports it can't initialize the audio, you can list all the microphones and find the alsa device name:
+```bash
+tc@box:~$ tce-load -wi alsa-utils.tcz
+tc@box:~$ arecord -l
+**** List of CAPTURE Hardware Devices ****
+card 1: Device [USB PnP Sound Device], device 0: USB Audio [USB Audio]
+  Subdevices: 1/1
+    Subdevice #0: subdevice #0
+```
+The device name will look like `hw:<card>,<device>`. So for example in the example above the device name will be `hw:1,0`. Let's restart picam with out correct ALSA device name:
+```bash
+tc@box:~$ killall picam
+tc@box:~$ /usr/local/bin/picam --alsadev hw:1,0 --time &
+```
+Now to start a recording we will have to create an empty `start_record` file in the `hooks` directory:
+```bash
+tc@box:~$ touch hooks/start_record
+```
+You should see `start rec`. Likewise to stop the recording create an empty `stop_record` file in the `hooks` directory:
+```bash
+tc@box:~$ touch hooks/stop_record
+tc@box:~$ killall picam
+tc@box:~$ exit
+```
+Now back on your main Linux box you can copy the video using rsync:
+```bash
+$ rsync -ravh tc@<replace with IP of RPi>:rec/archive/*.ts ~/videos/
+```
+Goto the `~/videos/` directory on your computer and you should be able to see a video file there. Open it with `vlc` or any other video player that supports playing `ts` files. If the video and audio seems good then we can move on to installing picam on our system permanently.
+
 ### Installing picam.tcz
+
+SSH into the RPi and copy the `picam.tcz` package to `/mnt/mmcblk0p2/tce/optional`:
+```bash
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ cp picam.tcz /mnt/mmcblk0p2/tce/optional/
+```
+Now to load `picam.tcz` on boot we need to add it to the `onboot.lst` file:
+```bash
+tc@box:~$ vi /mnt/mmcblk0p2/tce/onboot.lst
+```
+Now append `picam.tcz` to the file and then we reboot our RPi to see if it worked:
+```bash
+tc@box:~$ sudo reboot
+```
+SSH back into your RPi and try running picam to see if it works. If everything works correctly you can move on to setting up the main software on the RPi.
+
+### Compiling main software
