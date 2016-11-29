@@ -466,3 +466,50 @@ tc@box:~$ sudo reboot
 SSH back into your RPi and try running picam to see if it works. If everything works correctly you can move on to setting up the main software on the RPi.
 
 ### Compiling main software
+
+### Setting up Wi-Fi
+
+In order to get wifi working we need to install some packages and the firmware for our adapter. This is specific to different wifi adapters but <http://wiki.tinycorelinux.net/wiki:list_of_supported_wifi_devices> contains a semi-complete list for the different wireless NIC chips. For the TP-link WN722 we need to install the firmware for the `Atheros AR9271`, `wifi.tcz` and the `wireless-x.x.xx-piCore-vx+.tcz` package. You can search for wireless in the tiny core application browser:
+```bash
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ tce-load -wi wifi.tcz
+tc@box:~$ tce-ab
+1. tce-ab - Tiny Core Extension: Application Browser
+
+   S)earch P)rovides K)eywords or Q)uit: s
+2. Enter starting chars of desired extension, e.g. abi: wireless
+3. tce - Tiny Core Extension browser
+
+   1. firmware-rpi3-wireless.tcz
+   2. wireless-4.4.20-piCore_v7+.tcz
+   3. wireless_tools-dev.tcz
+   4. wireless_tools-doc.tcz
+   5. wireless_tools.tcz
+
+   Enter selection ( 1 - 5 ) or (q)uit: 2
+4. Version:        4.4.20-piCore_v7+
+   Author:         Various
+   Original-site:  http://kernel.org
+   Copying-policy: GPL
+   Size:           2.7M
+   Extension_by:   bmarkus
+   Tags:           WIRELESS WIFI NETWORK KERNEL MODULES
+   Comments:       Binaries only
+                   ----
+                   Compiled for piCore 8.x
+   Change-log:     ----
+   Current:        2016/09/08 First version
+   
+   :q
+5. A)bout I)nstall O)nDemand D)epends T)ree F)iles siZ)e L)ist S)earch P)rovides K)eywords or Q)uit: i
+   Downloading: wireless-4.4.20-piCore_v7+.tcz
+   Connecting to repo.tinycorelinux.net (89.22.99.37:80)
+   wireless-4.4.20-piCo 100% |**************************************|  2656k  0:00:00 ETA
+   wireless-4.4.20-piCore_v7+.tcz: OK
+6. A)bout I)nstall O)nDemand D)epends T)ree F)iles siZ)e L)ist S)earch P)rovides K)eywords or Q)uit: q
+
+Now we need to download the firmware for the Atheros AR9271 chip. Again look at the table at <http://wiki.tinycorelinux.net/wiki:list_of_supported_wifi_devices> to see the required driver. It should be included in the `firmware.tcz` package:
+```bash
+tc@box:~$ tce-load -wi firmware.tcz
+```
+
