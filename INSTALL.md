@@ -509,6 +509,7 @@ tc@box:~$ tce-ab
    wireless-4.4.20-piCo 100% |**************************************|  2656k  0:00:00 ETA
    wireless-4.4.20-piCore_v7+.tcz: OK
 6. A)bout I)nstall O)nDemand D)epends T)ree F)iles siZ)e L)ist S)earch P)rovides K)eywords or Q)uit: q
+```
 
 Now we need to download the firmware for the Atheros AR9271 chip. Again look at the table at <http://wiki.tinycorelinux.net/wiki:list_of_supported_wifi_devices> to see the required driver. It should be included in the `firmware.tcz` package:
 ```bash
