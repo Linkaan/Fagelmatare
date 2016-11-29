@@ -372,4 +372,28 @@ $ strip picam
 
 ### Packaging picam into a tcz package
 
+We must add our libraries into a common package that can be installed on our RPi. A tcz package is a in reality a squashfs, so we can simply create a directory that corresponds to the path that we want the files to be put into on our real filesystem when the raspberry pi reboots. Let's put in all the videocore libraries:
+```bash
+$ export PILIB=$HOME/master_toolchain/pi/picam/squashfs/usr/local/lib
+$ mkdir -p $PILIB
+$ rsync -ravh $PIOPT/lib/ $PILIB/
+```
+We also need the libav libraries and libfdk-aac:
+```bash
+$ rsync -ravh $PIBUILD/lib/ $PILIB/
+```
+Lastly we also need to copy our picam binary to a bin folder:
+```bash
+$ mkdir -p $PILIB/../bin
+$ cp ~/master_toolchain/pi/picam/picam $PILIB/../bin
+```
+Now to actually make a squashfs file we need to have the `squashfs-tools` package installed. To install it with aptitude package manager:
+```bash
+$ sudo apt-get install squashfs-tools
+```
+Then we can make our `picam.tcz` package by running:
+```bash
+$ mksquashfs $HOME/master_toolchain/pi/picam/squashfs/ picam.tcz
+```
 
+### Installing picam.tcz
