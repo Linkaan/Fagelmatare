@@ -85,8 +85,9 @@ chmod 777 /dev/vchiq
 ```
 ### Installing dependencies
 
-We need to make a backup of the filesystem to keep our changes after the system shuts down. But first we want to install a few dependencies that we will use in our software later. We want to install **libasound-dev.tcz**, **fontconfig-dev.tcz**, **harfbuzz-dev.tcz**, **openssl-dev.tcz** and **rsync.tcz**.
+We need to make a backup of the filesystem to keep our changes after the system shuts down. But first we want to install a few dependencies that we will use in our software later. We want to install **alsa.tcz**, **libasound-dev.tcz**, **fontconfig-dev.tcz**, **harfbuzz-dev.tcz**, **openssl-dev.tcz** and **rsync.tcz**.
 ```bash
+tc@box:~$ tce-load -wi alsa.tcz
 tc@box:~$ tce-load -wi libasound-dev.tcz
 tc@box:~$ tce-load -wi harfbuzz-dev.tcz
 tc@box:~$ tce-load -wi fontconfig-dev.tcz
@@ -402,7 +403,8 @@ $ sudo apt-get install squashfs-tools
 ```
 Then we can make our `picam.tcz` package by running:
 ```bash
-$ mksquashfs $HOME/master_toolchain/pi/picam/squashfs/ picam.tcz
+$ cd ~/master_toolchain/pi/picam
+$ mksquashfs squashfs/ picam.tcz
 ```
 
 ### Testing picam.tcz
@@ -455,17 +457,78 @@ Goto the `~/videos/` directory on your computer and you should be able to see a 
 SSH into the RPi and copy the `picam.tcz` package to `/mnt/mmcblk0p2/tce/optional`:
 ```bash
 $ ssh tc@<replace with IP of RPi>
-tc@box:~$ cp picam.tcz /mnt/mmcblk0p2/tce/optional/
+tc@box:~$ mv picam.tcz /mnt/mmcblk0p2/tce/optional/
 ```
-Now to load `picam.tcz` on boot we need to add it to the `onboot.lst` file:
+Now to load `picam.tcz` on boot we need to append it to the `onboot.lst` file:
 ```bash
-tc@box:~$ vi /mnt/mmcblk0p2/tce/onboot.lst
+tc@box:~$ echo picam.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 ```
-Now append `picam.tcz` to the file and then we reboot our RPi to see if it worked:
+Now we reboot our RPi to see if it worked:
 ```bash
 tc@box:~$ sudo reboot
 ```
 SSH back into your RPi and try running picam to see if it works. If everything works correctly you can move on to setting up the main software on the RPi.
+
+### Building wiringPi
+
+In our main main software we require to use `wiringPi` so let's download the source code:
+```bash
+$ cd ~/master_toolchain/pi
+$ git clone git://git.drogon.net/wiringPi
+```
+The reason we can't simply download the `wiringPi.tcz` package from the tiny core linux repository is because we need to patch the `wiringPiISR` function so that it accepts a userdata argument. Let's edit the wiringPi.c file:
+```bash
+$ vi ~/master_toolchain/wiringPi/wiringPi/wiringPi.c
+```
+Now go ahead and do the following changes (line numbers might not be exactly the same):
+```diff
+312:
+-static void (*isrFunctions [64])(void) ;
++static void (*isrFunctions [64])(void *) ;
+1811:
+-isrFunctions [myPin] () ;
++isrFunctions [myPin] (arg) ;
+1825:
+-int wiringPiISR (int pin, int mode, void (*function)(void))
++int wiringPiISR (int pin, int mode, void (*function)(void *), void *arg)
+1907:
+-pthread_create (&threadId, NULL, interruptHandler, NULL) ;
++pthread_create (&threadId, NULL, interruptHandler, arg) ;
+```
+Now let's do some changes to the wiringPi.h file:
+```bash
+$ vi ~/master_toolchain/wiringPi/wiringPi/wiringPi.h
+```
+Now go ahead and do the following changes (line numbers might not be exactly the same):
+```diff
+211:
+-extern int  wiringPiISR         (int pin, int mode, void (*function)(void)) ;
++extern int  wiringPiISR         (int pin, int mode, void (*function)(void *), void *arg) ;
+```
+Now we want to compile our software and put it in a squashfs directory:
+```bash
+$ export WIRINGPI=$HOME/master_toolchain/pi/wiringPi/squashfs/usr/local
+$ mkdir -p $WIRINGPI
+$ cd ~/master_toolchain/pi/wiringPi/wiringPi
+$ CC=${CCPREFIX}gcc INCLUDE="-I. -I$PIUSR/include" make
+$ DESTDIR=$WIRINGPI PREFIX="" LDCONFIG="" make install
+$ mv $WIRINGPI/include $PIUSR/include/wiringPi
+```
+
+### Packaging wiringPi into a tcz package
+
+Like we did with picam, we also want to package wiringPi into a package that we can use on our RPi:
+```bash
+$ cd ~/master_toolchain/pi/wiringPi
+$ mksquashfs squashfs/ wiringPi.tcz
+```
+Now let's install it on our RPi:
+```bash
+$ rsync -ravh wiringPi.tcz tc@<replace with IP of RPi>:wiringPi.tcz
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ mv wiringPi.tcz /mnt/mmcblk0p2/tce/optional/
+tc@box:~$ echo wiringPi.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
+```
 
 ### Compiling main software
 
