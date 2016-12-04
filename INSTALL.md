@@ -532,6 +532,17 @@ tc@box:~$ echo wiringPi.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 
 ### Compiling main software
 
+If you have not yet cloned this repository, clone it to `~/Fagelmatare`:
+```bash
+$ cd ~
+$ git clone -b v2.0 https://github.com/Linkaan/Fagelmatare
+```
+Now we compile our modules:
+```bash
+$ cd ~/Fagelmatare/modules
+$ CC=${CCPREFIX}gcc INCLUDE="-I. -I$PIUSR/include" make
+```
+
 ### Setting up Wi-Fi
 
 In order to get wifi working we need to install some packages and the firmware for our adapter. This is specific to different wifi adapters but <http://wiki.tinycorelinux.net/wiki:list_of_supported_wifi_devices> contains a semi-complete list for the different wireless NIC chips. For the TP-link WN722 we need to install the firmware for the `Atheros AR9271`, `wifi.tcz` and the `wireless-x.x.xx-piCore-vx+.tcz` package. You can search for wireless in the tiny core application browser:
