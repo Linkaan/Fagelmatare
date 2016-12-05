@@ -505,6 +505,17 @@ Now go ahead and do the following changes (line numbers might not be exactly the
 -extern int  wiringPiISR         (int pin, int mode, void (*function)(void)) ;
 +extern int  wiringPiISR         (int pin, int mode, void (*function)(void *), void *arg) ;
 ```
+Because we need to explicitly set `CC` and `INCLUDE` we must edit the Makefile aswell:
+```bash
+$ vi ~/master_toolchain/wiringPi/wiringPi/Makefile
+```
+We must change the `=` to a `?=` so that we can explicitly set it when we run `make`:
+```diff
+39: -CC      = gcc
+40: -INCLUDE = -I.
+39: +CC      ?= gcc
+49: +INCLUDE ?= -I.
+```
 Now we want to compile our software and put it in a squashfs directory:
 ```bash
 $ export WIRINGPI=$HOME/master_toolchain/pi/wiringPi/squashfs/usr/local
@@ -535,7 +546,7 @@ tc@box:~$ echo wiringPi.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 If you have not yet cloned this repository, clone it to `~/Fagelmatare`:
 ```bash
 $ cd ~
-$ git clone -b v2.0 https://github.com/Linkaan/Fagelmatare
+$ git clone --recursive -b v2.0 https://github.com/Linkaan/Fagelmatare
 ```
 Now we compile our modules:
 ```bash
