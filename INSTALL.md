@@ -516,14 +516,66 @@ We must change the `=` to a `?=` so that we can explicitly set it when we run `m
 39: +CC      ?= gcc
 49: +INCLUDE ?= -I.
 ```
-Now we want to compile our software and put it in a squashfs directory:
+We have to do it for gpio/ and devLib/ aswell:
+```
+$ vi ~/master_toolchain/pi/wiringPi/devLib/Makefile
+```
+Do the exact same changes as above.
+
+For the gpio utility we also need to modify the source file gpio.c:
+```bash
+$ vi ~/master_toolchain/pi/wiringPi/gpio/gpio.c
+```
+Do the following changes:
+```diff
+497: -static void wfi (void)
+497: +static void wfi (void *arg)
+521: -  if (wiringPiISR (pin, mode, &wfi) < 0)
+521: +  if (wiringPiISR (pin, mode, &wfi, NULL) < 0)
+```
+Now open up the makefile:
+```bash
+$ vi ~/master_toolchain/pi/wiringPi/gpio/Makefile
+```
+Do the following changes:
+```diff
+35: -CC      = gcc
+35: +CC      ?= gcc
+36: -INCLUDE = -I$(DESTDIR)$(PREFIX)/include
+36: +INCLUDE ?= -I$(DESTDIR)$(PREFIX)/include
+39: -LDFLAGS = -L$(DESTDIR)$(PREFIX)/lib
+39: +LDFLAGS ?= -L$(DESTDIR)$(PREFIX)/lib
+```
+Now we want to compile wiringPi modules and put it in a squashfs directory:
 ```bash
 $ export WIRINGPI=$HOME/master_toolchain/pi/wiringPi/squashfs/usr/local
 $ mkdir -p $WIRINGPI
 $ cd ~/master_toolchain/pi/wiringPi/wiringPi
 $ CC=${CCPREFIX}gcc INCLUDE="-I. -I$PIUSR/include" make
 $ DESTDIR=$WIRINGPI PREFIX="" LDCONFIG="" make install
+```
+Copy header files:
+```bash
 $ mv $WIRINGPI/include $PIUSR/include/wiringPi
+```
+Now compile devLib/:
+```bash
+$ cd ~/master_toolchain/pi/wiringPi/devLib
+$ CC=${CCPREFIX}gcc INCLUDE="-I. -I$PIUSR/include" make
+$ DESTDIR=$WIRINGPI PREFIX="" LDCONFIG="" make install
+```
+Copy the headers and libs before we compile the gpio utility:
+```bash
+$ mv $WIRINGPI/include/* $PIUSR/include/wiringPi
+$ rm -r $WIRINGPI/include
+$ cp $WIRINGPI/lib/* $PIUSR/lib/
+```
+Finally compile the gpio utility:
+```bash
+$ mkdir $WIRINGPI/bin
+$ cd ~/master_toolchain/pi/wiringPi/gpio
+$ CC=${CCPREFIX}gcc INCLUDE="-I. -I$PIUSR/include -I$PIUSR/include/wiringPi" LDFLAGS="-L$PIUSR/lib" make
+$ DESTDIR=$WIRINGPI PREFIX="" LDCONFIG="" sudo make install
 ```
 
 ### Packaging wiringPi into a tcz package
