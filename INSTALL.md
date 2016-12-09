@@ -705,7 +705,7 @@ tc@box:~$ ln -nsf /dev/shm/state ~/picam/state
 ```
 If you also want to test the livestreaming part you must first [setup the Linux server](#setting-up-linux-server). However that is not necessary to test core functionality so I recommend doing that later.
 
-Now before we run picam we need to know the alsa device name of our microphone as was [previously described how to find](testing-picam.tcz). Also if you want to test the livestreaming part you need to make sure that the Linux server is accessible by your picam (try pinging the Linux server from the RPi).
+Now before we run picam we need to know the alsa device name of our microphone as was [previously described how to find](#testing-picam.tcz). Also if you want to test the livestreaming part you need to make sure that the Linux server is accessible by your picam (try pinging the Linux server from the RPi).
 
 Now replace hw:1,0 with your alsa device name (default is hw:0,0 so you can try that if you chose the default setting before) and invoke the command:
 ```bash
@@ -715,17 +715,17 @@ Or to try livestreaming (replace the IP with the actual ip of your Linux server)
 ```bash
 tc@box:~$ (cd ~/picam ; picam --alsadev hw:1,0 --time --timeformat "%a %b %d %H:%M:%S" --hflip --vflip --vfr -v 8400000 --tcpout udp://<replace with IP of server>:8181 > picam.log 2&>1 &)
 ```
-Look at the ~/picam/picam.log file to see if picam started correctly, otherwise make sure the camera and microphone is connected (look at how to setup picam again).
+Look at the `~/picam/picam.log` file to see if picam started correctly, otherwise make sure the camera and microphone is connected (look at how to setup picam again).
 
 Now we start our core module:
 ```bash
 tc@box:~$ sudo ~/fagelmatare-core > ~/fagelmatare.log 2&>1 &
 ```
-Put your hand in front of the PIR sensor to trigger a recording or if you are really lazy you can also send a SIGTSTP signal to fagelmatare-core to fake it:
+Put your hand in front of the PIR sensor to trigger a recording or if you are really lazy you can also send a `SIGTSTP` signal to fagelmatare-core to fake it:
 ```bash
 tc@box:~$ sudo kill -TSTP `pidof fagelmatare-core`
 ```
-If you look at ~/picam/picam.log file again you should see that picam recorded a video. If nothing happen try doing it again and make sure the sensor is properly connected.
+If you look at `~/picam/picam.log` file again you should see that picam recorded a video. If nothing happen try doing it again and make sure the sensor is properly connected.
 
 Back at our main machine let's try syncing the recording(s):
 ```bash
