@@ -72,6 +72,8 @@ Now we need to add the following parameters under the "[ALL]" section:
 gpu_mem=128
 start_file=start_x.elf
 fixup_file=fixup_x.dat
+# optionally (to not scare birds):
+disable_camera_led=1
 ```
 Basic usage of `vi` if you're not used to it: press i to enter edit mode, then add the content and press esc to go back to command mode and type `:wq` to write the changes and exit. Same procedure when you use `vi` hereafter.
 
@@ -431,7 +433,7 @@ card 1: Device [USB PnP Sound Device], device 0: USB Audio [USB Audio]
   Subdevices: 1/1
     Subdevice #0: subdevice #0
 ```
-The device name will look like `hw:<card>,<device>`. So for example in the example above the device name will be `hw:1,0`. Let's restart picam with out correct ALSA device name:
+The device name will look like `hw:<card>,<device>`. So for example in the example above the device name will be `hw:1,0`. Let's restart picam with our correct ALSA device name:
 ```bash
 tc@box:~$ killall picam
 tc@box:~$ /usr/local/bin/picam --alsadev hw:1,0 --time &
@@ -603,8 +605,9 @@ $ git clone --recursive -b v2.0 https://github.com/Linkaan/Fagelmatare
 Now we compile our modules:
 ```bash
 $ cd ~/Fagelmatare/modules
-$ CC=${CCPREFIX}gcc INCLUDE="-I. -I$PIUSR/include" make
+$ CC=${CCPREFIX}gcc INCLUDE="-I$PIUSR/include" LINKS="-L$PIUSR/lib" make
 ```
+Now we have setup the essentials to test our SW but first let's setup networking.
 
 ### Setting up Wi-Fi
 
@@ -657,7 +660,7 @@ We want to setup a static ip so we create a `/opt/wlan0.sh` file with the follow
 #!/bin/sh
 wpa_passphrase <replace with SSID> <replace with password> > /etc/wpa_supplicant.conf
 wpa_supplicant -i wlan0 -c /etc/wpa_supplicant.conf -B >/dev/null 2>&1
-ifconfig wlan0 <replace with IP for RPi> netmask <replace with netmask> up
+ifconfig wlan0 <replace with wanted IP for RPi> netmask <replace with netmask> up
 route add default gw <replace with gateway>
 echo nameserver 8.8.8.8 >> /etc/resolv.conf
 echo nameserver 8.8.4.4 >> /etc/resolv.conf
@@ -666,20 +669,73 @@ By default the netmask will be `255.255.255.0` but you need to configure this fo
 ```bash
 tc@box:~$ sudo chmod +x /opt/wlan0.sh
 ```
-Make it run at boot by appending the following line to `/opt/bootlocal.sh`:
+Make it run at boot by appending the following lines to `/opt/bootlocal.sh`:
 ```bash
+ifconfig wlan0 up 2>/dev/null
+iwlist wlan0 scanning >/dev/null
+sleep 1
 /opt/wlan0.sh 2>&1 >/tmp/wifi0.log
 ```
+We first bring up the wlan0 interface and activate the adapter. We do a dummy scan to make sure the adapter is active and wait 1 second for the scan to finish.
+
 Now plug out the ethernet cable so we can test the wifi connection. To keep the changes after we do a backup and reboot:
 ```bash
 tc@box:~$ filetool.sh -b
 tc@box:~$ sudo reboot
 ```
-After the RPi has booted up, try to ping the IP address and make sure the connection works.
+After the RPi has booted up, try to ping the new IP address and make sure the connection works.
+
+### Sneak-peak of core functionality (optional)
+
+This step is optional but is recommended to make sure everything thus far is setup correctly. We want to test the core module and picam.
+
+Sync the core module to the RPi:
+```bash
+$ cd ~/Fagelmatare/modules/core
+$ rsync -ravh fagelmatare-core tc@<replace with IP of RPi>:fagelmatare-core
+```
+SSH into the RPi and let's setup a directory used by picam for storage:
+```bash
+tc@box:~$ sudo mkdir ~/picam
+tc@box:~$ (cd /dev/shm && mkdir rec ; mkdir state ; mkdir hooks)
+tc@box:~$ ln -nsf ~/picam/archive /dev/shm/rec/archive
+tc@box:~$ ln -nsf /dev/shm/rec ~/picam/rec
+tc@box:~$ ln -nsf /dev/shm/hooks ~/picam/hooks
+tc@box:~$ ln -nsf /dev/shm/state ~/picam/state
+```
+If you also want to test the livestreaming part you must first [setup the Linux server](#setting-up-linux-server). However that is not necessary to test core functionality so I recommend doing that later.
+
+Now before we run picam we need to know the alsa device name of our microphone as was [previously described how to find](testing-picam.tcz). Also if you want to test the livestreaming part you need to make sure that the Linux server is accessible by your picam (try pinging the Linux server from the RPi).
+
+Now replace hw:1,0 with your alsa device name (default is hw:0,0 so you can try that if you chose the default setting before) and invoke the command:
+```bash
+tc@box:~$ (cd ~/picam ; picam --alsadev hw:1,0 --time --timeformat "%a %b %d %H:%M:%S" --hflip --vflip --vfr -v 8400000 > picam.log 2&>1 &)
+```
+Or to try livestreaming (replace the IP with the actual ip of your Linux server):
+```bash
+tc@box:~$ (cd ~/picam ; picam --alsadev hw:1,0 --time --timeformat "%a %b %d %H:%M:%S" --hflip --vflip --vfr -v 8400000 --tcpout udp://<replace with IP of server>:8181 > picam.log 2&>1 &)
+```
+Look at the ~/picam/picam.log file to see if picam started correctly, otherwise make sure the camera and microphone is connected (look at how to setup picam again).
+
+Now we start our core module:
+```bash
+tc@box:~$ sudo ~/fagelmatare-core > ~/fagelmatare.log 2&>1 &
+```
+Put your hand in front of the PIR sensor to trigger a recording or if you are really lazy you can also send a SIGTSTP signal to fagelmatare-core to fake it:
+```bash
+tc@box:~$ sudo kill -TSTP `pidof fagelmatare-core`
+```
+If you look at ~/picam/picam.log file again you should see that picam recorded a video. If nothing happen try doing it again and make sure the sensor is properly connected.
+
+Back at our main machine let's try syncing the recording(s):
+```bash
+$ rsync -ravh tc@<replace with IP of RPi>:picam/archive/* ~/test-videos/
+```
+Now try playing the video(s) in ~/test-videos/ with VLC or similar. If you have setup the livestreaming part also check so that works.
 
 ### Setting up network over usb
 
-In order to communicate with the slave RPi we need to setup a network over usb. This is usually called tethering, because the slave RPi doesn't require a connection to the internet we don't need to share internet access and don't need to setup IP forwarding in the kernel.
+In order to communicate with the slave RPi we need to setup a network over usb. This is called tethering, we need to share internet access and setup IP forwarding in the kernel.
 
 ## Configuring our slave
 
@@ -689,3 +745,5 @@ Now SSH into the RPi (how to find the IP is described in the [Installing tiny co
 ```bash
 $ ssh tc@<replace with IP of RPi>
 ```
+
+## Setting up Linux server
