@@ -786,7 +786,7 @@ $ mkdir -p usb_modules/lib/modules/kernel/drivers/usb/gadget/legacy
 $ mkdir -p usb_modules/lib/modules/kernel/drivers/usb/gadget/function/
 $ mkdir -p usb_modules/lib/modules/kernel/drivers/usb/gadget/udc/
 $ mkdir -p usb_modules/lib/modules/kernel/drivers/usb/dwc2
-``
+```
 Now copy over the actual kernel modules:
 ```bash
 $ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/legacy/g_ether.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/legacy
