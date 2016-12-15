@@ -600,7 +600,7 @@ tc@box:~$ echo wiringPi.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 If you have not yet cloned this repository, clone it to `~/Fagelmatare`:
 ```bash
 $ cd ~
-$ git clone --recursive -b v2.0 https://github.com/Linkaan/Fagelmatare
+$ git clone --recursive https://github.com/Linkaan/Fagelmatare
 ```
 Now we compile our modules:
 ```bash
