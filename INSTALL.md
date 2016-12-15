@@ -30,7 +30,7 @@ Now run this command on your machine to remotely connect to your RPi:
 ```bash
 $ ssh tc@<replace with IP of RPi>
 ```
-The default password is "piCore"
+The default password is "piCore".
 
 Once you're logged in we need to partition our SD card to add persistent storage. We need this to install our software. We want to expand the mmcblk0p2 partition to fill our SD card.
 
@@ -50,6 +50,20 @@ Once you're logged in we need to partition our SD card to add persistent storage
 
 If you are using a RPi zero as the slave you must have a USB ethernet adapter, however it is much easier to just configure the slave on the master RPi so that you can use ethernet.
 
+If you are configuring on a RPi zero you need to also install the `net-usb-4.4.20-piCore+.tcz` package and put that manually on the sd card. If your operating system doesn't automatically mount te sd card for you, you must do it yourself. First identify the location of the sd card by first runnng `lsblk` without the sd card inserted, then insert the sdcard again and run `lsblk`. The sd card should show up as a device which was not present the first time you ran lsblk. Now mount the
+second partition to somewhere (of course replace /dev/sdx with actual location of SECOND partition for the sd card):
+```bash
+$ sudo mkdir -p /mnt/sdcard
+$ sudo mnt -t ext4 /dev/sdx2 /mnt/sdcard
+```
+Now install the net usb modules:
+```bash
+$ cd /mnt/sdcard/tce/optional
+$ wget tinycorelinux.net/8.x/armv6/tcz/net-usb-4.4.20-piCore+.tcz
+$ cd ..
+$ echo net-usb-4.4.20-piCore+.tcz >> onboot.lst
+```
+
 Do the same procedure for the slave as for the master but remember to download from the correct architecture. It will be armv6 if you're using a RPi model A, B, A+, B+ or zero) and armv7 for the second generation of RPi.
 
 ## Configuring our master
@@ -58,6 +72,8 @@ SSH into your master RPi (procedure to retrieve IP of RPi is described above):
 ```bash
 $ ssh tc@<replace with IP of RPi>
 ```
+
+### Setting timezone
 
 ### Enabling camera
 
@@ -739,11 +755,70 @@ In order to communicate with the slave RPi we need to setup a network over usb. 
 
 ## Configuring our slave
 
+Make sure you have installed and configured tiny core linux on the slave RPi as described in the [Installing tiny core linux](#installing-tiny-core-linux) section.
+
 Again if you are using a RPi zero as the slave you must have a USB ethernet adapter, however it is much easier to just configure the slave on the master RPi so that you can use ethernet.
 
-Now SSH into the RPi (how to find the IP is described in the [Installing tiny core linux](#installing-tiny-core-linux) section):
+### Setting up network over usb
+
+SSH into the slave RPi and mount the boot directory:
 ```bash
 $ ssh tc@<replace with IP of RPi>
+tc@box:~$ sudo mount -t vfat /dev/mmcblk0p1 /mnt/mmcblk0p1
+tc@box:~$ vi config.txt
 ```
+We need to enable the `dwc2` overlay in order to setup the RPi as a ethernet gadget. So add this under the `[ALL]` section:
+```
+dtoverlay=dwc2
+```
+Back on our main computer let's copy all the required usb modules that we need.
+
+Start by downloading the kernel modules and unpack:
+```bash
+$ mkdir -p ~/slave_toolchain/kernel_modules
+$ cd ~/slave_toolchain/kernel_modules
+$ wget tinycorelinux.net/8.x/armv6/releases/RPi/src/kernel/4.4.20-piCore+_modules.tar.xz
+$ tar xJf 4.4.20-piCore+_modules.tar.xz
+```
+Now let's copy over the required modules to a directory that we can put into a squash filesystem. We start by creating the necessary directories:
+```bash
+$ mkdir -p usb_modules/lib/modules/kernel/drivers/usb/gadget/legacy
+$ mkdir -p usb_modules/lib/modules/kernel/drivers/usb/gadget/function/
+$ mkdir -p usb_modules/lib/modules/kernel/drivers/usb/gadget/udc/
+$ mkdir -p usb_modules/lib/modules/kernel/drivers/usb/dwc2
+``
+Now copy over the actual kernel modules:
+```bash
+$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/legacy/g_ether.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/legacy
+$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/libcomposite.ko usb_modules/lib/modules/kernel/drivers/usb/gadget
+$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/function/usb_f_rndis.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/function/
+$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/function/u_ether.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/function/
+$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/udc/udc-core.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/udc/
+$ cp 4.4.20-piCore+/kernel/drivers/usb/dwc2/dwc2.ko usb_modules/lib/modules/kernel/drivers/usb/dwc2
+```
+Now we make into an actual squashfs package:
+```bash
+$ mksquashfs usb_modules/ usb_modules.tcz
+```
+Let's install the package by copying it to our slave RPi and adding it to onboot.lst:
+```bash
+$ rsync -ravh usb_modules.tcz tc@<replace with IP of RPi>:/mnt/mmcblk0p2/tce/optional/usb_modules.tcz
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ echo usb_modules.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
+```
+We also want to make sure the `dwc2` and `g_ether` module loads on boot, add this just after `rootwait` in `/mnt/mmcblk0p1/cmdline.txt`:
+```
+modules-load=dwc2,g_ether
+```
+Here is an example of the edited version of the `cmdline.txt` file:
+```
+dwc_otg.lpm_enable=0 console=ttyAMA0,115200 console=tty1 root=/dev/ram0 elevator=deadline rootwait modules-load=dwc2,g_ether quiet nortc loglevel=3 noembed
+```
+
+Before rebooting let's also add the kernel modules for the sense hat.
+
+### Enabling sense hat
+
+The modules for the sensehat framebuffer is not enabled by default.
 
 ## Setting up Linux server
