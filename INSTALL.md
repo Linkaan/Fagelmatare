@@ -45,7 +45,7 @@ Once you're logged in we need to partition our SD card to add persistent storage
 4. After reboot expand file system to the new partition boundaries with typing  the following command as root:
     ```bash
     tc@box:~$ sudo resize2fs /dev/mmcblk0p2
-    ```
+    ```  
 ### Slave RPi
 
 If you are using a RPi zero as the slave you must have a USB ethernet adapter, however it is much easier to just configure the slave on the master RPi so that you can use ethernet.
