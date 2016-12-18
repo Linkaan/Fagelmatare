@@ -1,3 +1,6 @@
 [submodule "modules/core"]
 	path = modules/core
 	url = git@github.com:Linkaan/Core.git
+[submodule "modules/slave"]
+	path = modules/slave
+	url = git@github.com:Linkaan/Slave.git
