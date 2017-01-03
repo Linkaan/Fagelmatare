@@ -4,7 +4,7 @@
 [![Fagelmatare GPLv3 License](https://img.shields.io/badge/licens-GPLv3_License-blue.svg)](LICENSE)  
 An embedded project created to learn Linux and C. Feeds and records birds using a PIR sensor. This is version 2 of this project, take a look at [legacy](https://github.com/Linkaan/Fagelmatare/tree/legacy) branch to see the original project.
 
-Copyright (C) 2016 Linus Styrén <linus122xbb@gmail.com>
+Copyright (C) 2016-2017 Linus Styrén <linus122xbb@gmail.com>
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by

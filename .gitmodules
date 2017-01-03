@@ -4,3 +4,6 @@
 [submodule "modules/slave"]
 	path = modules/slave
 	url = git@github.com:Linkaan/Slave.git
+[submodule "modules/serializer"]
+	path = modules/serializer
+	url = https://github.com/Linkaan/Serializer
