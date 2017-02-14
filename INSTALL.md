@@ -6,19 +6,22 @@ This guide describes how to install the necessary software for this project. Thi
 
 Tiny Core Linux is used as the toolkit to create our customized embedded system to run our software.
 
-### Master RPi
-
-Get the latest version of picore for your RPi. If you use a RPi 1 as the master you should download from <http://tinycorelinux.net/8.x/armv6/releases/RPi/> instead. Same goes for all the future dependencies we download from <http://tinycorelinux.net>.
+Get the latest version of picore (piCore-8.1.5 as of now). You can download a universal image from <http://tinycorelinux.net/8.x/armv6/releases/RPi/>:
 ```bash
 $ cd ~
-$ wget http://tinycorelinux.net/8.x/armv7/releases/RPi/piCore-8.0.zip
-$ unzip piCore-8.0.zip
+$ wget http://tinycorelinux.net/8.x/armv6/releases/RPi/piCore-8.1.5.zip
+$ unzip piCore-8.1.5.zip
 ```
-Identify location of sd card by first running `lsblk` and then insert sd card and run `lsblk`. The sd card should show up as a device which is not present the first time you ran `lsblk`.
+
+### Preparing the SD-card
+
+The following procedure is the same for both the master and slave RPi.
+
+Identify location of the sd card by first running `lsblk` and then insert sd card and run `lsblk`. The sd card should show up as a device which is not present the first time you ran `lsblk`.
 
 Now we install piCore with dd command (replace /dev/sdx with the location of your sd card)
 ```bash
-$ sudo dd if="~/piCore-8.0.img" of="/dev/sdx"
+$ sudo dd if="~/piCore-8.1.5.img" of="/dev/sdx"
 $ sync
 ```
 Plug in an ethernet cable to your master RPi, insert the sd card and boot it up. If you have your RPi connected to a monitor with a keyboard run `ifconfig eth0` to get the IP address which will be used to login remotely over SSH. Otherwise if the RPi is on the same LAN as your Linux box you can run nmap to scan for the RPi with this command (use `ifconfig` on your machine if you are not sure if your network is 192.168.1.0):
@@ -49,9 +52,11 @@ Once you're logged in we need to partition our SD card to add persistent storage
 
 ### Slave RPi
 
+First prepare the SD-card for the slave as described above. 
+
 If you are using a RPi zero as the slave you must have a USB ethernet adapter, however it is much easier to just configure the slave on the master RPi so that you can use ethernet.
 
-If you are configuring on a RPi zero you need to also install the `net-usb-4.4.20-piCore+.tcz` package and put that manually on the sd card. If your operating system doesn't automatically mount te sd card for you, you must do it yourself. First identify the location of the sd card by first runnng `lsblk` without the sd card inserted, then insert the sdcard again and run `lsblk`. The sd card should show up as a device which was not present the first time you ran lsblk. Now mount the
+If you are configuring on a RPi zero you need to also install the `net-usb-4.4.39-piCore+.tcz` package and put that manually on the sd card. If your operating system doesn't automatically mount the sd card for you, you must do it yourself. First identify the location of the sd card by first runnng `lsblk` without the sd card inserted, then insert the sdcard again and run `lsblk`. The sd card should show up as a device which was not present the first time you ran lsblk. Now mount the
 second partition to somewhere (of course replace /dev/sdx with actual location of SECOND partition for the sd card):
 ```bash
 $ sudo mkdir -p /mnt/sdcard
@@ -60,13 +65,10 @@ $ sudo mnt -t ext4 /dev/sdx2 /mnt/sdcard
 Now install the net usb modules:
 ```bash
 $ cd /mnt/sdcard/tce/optional
-$ wget tinycorelinux.net/8.x/armv6/tcz/net-usb-4.4.20-piCore+.tcz
+$ wget tinycorelinux.net/8.x/armv6/tcz/net-usb-4.4.39-piCore+.tcz
 $ cd ..
-$ echo net-usb-4.4.20-piCore+.tcz >> onboot.lst
+$ echo net-usb-4.4.39-piCore+.tcz >> onboot.lst
 ```
-
-Do the same procedure for the slave as for the master but remember to download from the correct architecture. It will be armv6 if you're using a RPi model A, B, A+, B+ or zero) and armv7 for the second generation of RPi.
-
 ## Configuring our master
 
 SSH into your master RPi (procedure to retrieve IP of RPi is described above):
@@ -119,7 +121,7 @@ tc@box:~$ sudo filetool.sh -b
 tc@box:~$ sudo reboot
 ```
 
-### Building and configuring crosstool-ng
+### Building and configuring crosstool-ng for master
 
 We want to setup our cross compiler to be able to compile the software for our specific RPi architecture. We need to install a few packages that are required to build crosstool-ng which is the cross compiler that we are going to use. This procedure is done on your main Linux machine.
 
@@ -268,7 +270,7 @@ tc@box:~$ sudo chmod +x test
 tc@box:~$ ./test
 Hello, world!
 ```
-If the program works it will display "Hello, world!" and you're ready to compile our main software. If it doesn't work make sure you configured the cross compiler correctly.
+If the program works it will display "Hello, world!" and you're ready to compile the main software. If it doesn't work for you make sure you configured the cross compiler correctly.
 
 ### Compiling ffmpeg and picam
 
@@ -640,13 +642,13 @@ tc@box:~$ tce-ab
 3. tce - Tiny Core Extension browser
 
    1. firmware-rpi3-wireless.tcz
-   2. wireless-4.4.20-piCore_v7+.tcz
+   2. wireless-4.4.39-piCore_v7+.tcz
    3. wireless_tools-dev.tcz
    4. wireless_tools-doc.tcz
    5. wireless_tools.tcz
 
    Enter selection ( 1 - 5 ) or (q)uit: 2
-4. Version:        4.4.20-piCore_v7+
+4. Version:        4.4.39-piCore_v7+
    Author:         Various
    Original-site:  http://kernel.org
    Copying-policy: GPL
@@ -661,10 +663,10 @@ tc@box:~$ tce-ab
    
    :q
 5. A)bout I)nstall O)nDemand D)epends T)ree F)iles siZ)e L)ist S)earch P)rovides K)eywords or Q)uit: i
-   Downloading: wireless-4.4.20-piCore_v7+.tcz
+   Downloading: wireless-4.4.39-piCore_v7+.tcz
    Connecting to repo.tinycorelinux.net (89.22.99.37:80)
-   wireless-4.4.20-piCo 100% |**************************************|  2656k  0:00:00 ETA
-   wireless-4.4.20-piCore_v7+.tcz: OK
+   wireless-4.4.39-piCo 100% |**************************************|  2656k  0:00:00 ETA
+   wireless-4.4.39-piCore_v7+.tcz: OK
 6. A)bout I)nstall O)nDemand D)epends T)ree F)iles siZ)e L)ist S)earch P)rovides K)eywords or Q)uit: q
 ```
 
@@ -758,9 +760,11 @@ In order to communicate with the slave RPi we need to setup a network over usb. 
 
 Make sure you have installed and configured tiny core linux on the slave RPi as described in the [Installing tiny core linux](#installing-tiny-core-linux) section.
 
-Again if you are using a RPi zero as the slave you must have a USB ethernet adapter, however it is much easier to just configure the slave on the master RPi so that you can use ethernet.
+Again for the following procedures if you are using a RPi zero as the slave you must have a USB ethernet adapter, however it is much easier to just configure the slave on the master RPi so that you can use ethernet. However, after setting up network over usb you can switch to the RPi zero.
 
 ### Setting up network over usb
+
+This step is only viable if you use the RPi zero. Otherwise you must use a crossover ethernet cable to connect to the master which isn't covered in this guide.
 
 SSH into the slave RPi and mount the boot directory:
 ```bash
@@ -778,8 +782,8 @@ Start by downloading the kernel modules and unpack:
 ```bash
 $ mkdir -p ~/slave_toolchain/kernel_modules
 $ cd ~/slave_toolchain/kernel_modules
-$ wget tinycorelinux.net/8.x/armv6/releases/RPi/src/kernel/4.4.20-piCore+_modules.tar.xz
-$ tar xJf 4.4.20-piCore+_modules.tar.xz
+$ wget tinycorelinux.net/8.x/armv6/releases/RPi/src/kernel/4.4.39-piCore+_modules.tar.xz
+$ tar xJf 4.4.39-piCore+_modules.tar.xz
 ```
 Now let's copy over the required modules to a directory that we can put into a squash filesystem. We start by creating the necessary directories:
 ```bash
@@ -790,14 +794,14 @@ $ mkdir -p usb_modules/lib/modules/kernel/drivers/usb/dwc2
 ```
 Now copy over the actual kernel modules:
 ```bash
-$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/legacy/g_ether.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/legacy
-$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/libcomposite.ko usb_modules/lib/modules/kernel/drivers/usb/gadget
-$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/function/usb_f_rndis.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/function/
-$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/function/u_ether.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/function/
-$ cp 4.4.20-piCore+/kernel/drivers/usb/gadget/udc/udc-core.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/udc/
-$ cp 4.4.20-piCore+/kernel/drivers/usb/dwc2/dwc2.ko usb_modules/lib/modules/kernel/drivers/usb/dwc2
+$ cp 4.4.39-piCore+/kernel/drivers/usb/gadget/legacy/g_ether.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/legacy
+$ cp 4.4.39-piCore+/kernel/drivers/usb/gadget/libcomposite.ko usb_modules/lib/modules/kernel/drivers/usb/gadget
+$ cp 4.4.39-piCore+/kernel/drivers/usb/gadget/function/usb_f_rndis.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/function/
+$ cp 4.4.39-piCore+/kernel/drivers/usb/gadget/function/u_ether.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/function/
+$ cp 4.4.39-piCore+/kernel/drivers/usb/gadget/udc/udc-core.ko usb_modules/lib/modules/kernel/drivers/usb/gadget/udc/
+$ cp 4.4.39-piCore+/kernel/drivers/usb/dwc2/dwc2.ko usb_modules/lib/modules/kernel/drivers/usb/dwc2
 ```
-Now we make into an actual squashfs package:
+Now we create the squashfs package:
 ```bash
 $ mksquashfs usb_modules/ usb_modules.tcz
 ```
@@ -807,19 +811,152 @@ $ rsync -ravh usb_modules.tcz tc@<replace with IP of RPi>:/mnt/mmcblk0p2/tce/opt
 $ ssh tc@<replace with IP of RPi>
 tc@box:~$ echo usb_modules.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 ```
-We also want to make sure the `dwc2` and `g_ether` module loads on boot, add this just after `rootwait` in `/mnt/mmcblk0p1/cmdline.txt`:
+Also make sure the modules.dep is correct by calling `depmod -a` and use filetool.sh to make changes persistent:
+```bash
+tc@box:~$ sudo depmod -a
+tc@box:~$ filetool.sh -b
 ```
-modules-load=dwc2,g_ether
+Let's mount the root partition to be able to change config.txt:
+```bash
+tc@box:~$ sudo mount /dev/mmcblk0p1 /mnt/mmcblk0p1
 ```
-Here is an example of the edited version of the `cmdline.txt` file:
+We also want to make sure the `dwc2` overlay is enabled on boot, add the following under the RPI-0 section in `/mnt/mmcblk0p1/config.txt`:
 ```
-dwc_otg.lpm_enable=0 console=ttyAMA0,115200 console=tty1 root=/dev/ram0 elevator=deadline rootwait modules-load=dwc2,g_ether quiet nortc loglevel=3 noembed
+dtoverlay=dwc2,rpi-sense
+```
+Now to load the dwc2 and g_ether module on boot let's add the following content to `/opt/bootlocal.sh`:
+```bash
+/sbin/modprobe dwc2
+/bin/sleep 5 # workaround for a problem not detecting usb devices
+/sbin/modprobe g_ether
+/sbin/ifconfig usb0 10.0.1.2 up
 ```
 
 Before rebooting let's also add the kernel modules for the sense hat.
 
 ### Enabling sense hat
 
-The modules for the sensehat framebuffer is not enabled by default.
+The modules for the sensehat framebuffer is not enabled by default. Let's copy the required modules in the same way as we did for usb modules. Create the necessary directories:
+```bash
+$ mkdir -p sensehat_modules/lib/modules/kernel/drivers/mfd/
+$ mkdir -p sensehat_modules/lib/modules/kernel/drivers/input/joystick/
+$ mkdir -p sensehat_modules/lib/modules/kernel/drivers/video/fbdev/core
+```
+Now copy over the actual kernel modules:
+```bash
+$ cp 4.4.39-piCore+/kernel/drivers/mfd/rpisense-core.ko usb_modules/lib/modules/kernel/drivers/mfd
+$ cp 4.4.39-piCore+/kernel/drivers/input/joystick/rpisense-js.ko usb_modules/lib/modules/kernel/drivers/input/joystick
+$ cp 4.4.39-piCore+/kernel/drivers/video/fbdev/rpisense-fb.ko usb_modules/lib/modules/kernel/drivers/video/fbdev
+$ cp 4.4.39-piCore+/kernel/drivers/video/fbdev/core/fb_sys_fops.ko usb_modules/lib/modules/kernel/drivers/video/fbdev/core
+$ cp 4.4.39-piCore+/kernel/drivers/video/fbdev/core/sysfillrect.ko usb_modules/lib/modules/kernel/drivers/video/fbdev/core
+$ cp 4.4.39-piCore+/kernel/drivers/video/fbdev/core/syscopyarea.ko usb_modules/lib/modules/kernel/drivers/video/fbdev/core
+$ cp 4.4.39-piCore+/kernel/drivers/video/fbdev/core/sysimgblt.ko usb_modules/lib/modules/kernel/drivers/video/fbdev/core
+```
+Now we create the squashfs package:
+```bash
+$ mksquashfs sensehat_modules/ sensehat_modules.tcz
+```
+Let's install the package by copying it to our slave RPi and adding it to onboot.lst:
+```bash
+$ rsync -ravh sensehat_modules.tcz tc@<replace with IP of RPi>:/mnt/mmcblk0p2/tce/optional/sensehat_modules.tcz
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ echo sensehat_modules.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
+```
+Now reboot the RPi and everything should be setup to configure crosstool-ng.
+
+### Building and configuring crosstool-ng for slave
+
+In order to compile software for our slave RPi we need to configure the cross compiler for our slave aswell in the same manner as we did for our master RPi.
+
+Assuming you have already configured the cross compiler for the master you should already have the required dependencies installed, if not see the section on how to configure the cross compiler for the master.
+
+We create a new directory for our slave toolchain.
+```bash
+$ mkdir ~/slave_toolchain
+$ cd ~/slave_toolchain
+```
+Download the latest release version of crosstool-ng from <http://crosstool-ng.org/download/crosstool-ng/>. **NOTE** the current version available as of right now (1.22.0) doesn't work because of 404 errors when trying to build crosstool-ng. If there is a more recent version available than 1.22.0 try that otherwise we have to download from the development branch by cloning the git repository:
+```bash
+$ git clone https://github.com/crosstool-ng/crosstool-ng
+```
+We also need to generate our configure file if we downloaded the development branch:
+```bash
+$ cd crosstool-ng
+$ ./bootstrap
+```
+Otherwise if you downloaded the release version just untar the tar.xz archive.
+```bash
+$ tar xvf crosstool-ng-*.tar.xz
+$ cd crosstool-ng
+```
+
+Next whether we downloaded crosstool-ng from the development branch or the latest working release we want to configure our toolchain:
+```bash
+$ ./configure --prefix=$HOME/slave_toolchain/cross
+```
+If configure completes without any errors we can compile it, otherwise install any dependencies it says are missing.
+```bash
+$ make
+$ sudo make install
+```
+Ok, now we need to configure the cross compiler to be able to compile for our RPi architecture.
+```bash
+$ export PATH=$PATH:$HOME/slave_toolchain/cross/bin
+$ cd ~/slave_toolchain
+$ mkdir ctng
+$ cd ctng
+$ ct-ng menuconfig
+```
+
+Now see the [Building and configuring crosstool-ng for master](#building-and-configuring-crosstool-ng-for-master) section for the configuration to use. For the raspberry pi zero it will be the generation 1 configuration.
+
+In order to distinquise between the master and slave cross compiler we want to change one setting:
+
+- Toolchain options
+    - Set "Tuple's vendor string" to "rpislave"
+
+After you have configured crosstool-ng it is time to compile:
+```bash
+$ sudo chown -R $(whoami) $HOME/slave_toolchain/cross
+$ ct-ng build
+```
+
+### Testing our cross compiler
+
+In the same way we tested our master cross compiler we want to do a quick sanity check. We export CCPREFIX to be able to compile and add our prefix directory to the path:
+```bash
+$ export PATH=$PATH:$HOME/slave_toolchain/cross/x-tools/arm-rpi-linux-gnueabihf/bin
+$ export CCPREFIX="$HOME/slave_toolchain/cross/x-tools/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-"
+```
+If everything is setup correctly you should be able to get the current version of the ARM compiler:
+```bash
+$ arm-rpislave-linux-gnueabihf-gcc --version
+```
+Now we try to build a simple hello world program in C. Open test.c in your favourite editor (vim, nano, emacs) and add the following content:
+```c
+#include <stdio.h>
+
+int main() {
+    printf("Hello, world!\n");
+    return 0;
+}
+```
+Now we try building our "test" binary and copying it to the master RPi.
+```bash
+$ arm-rpislave-linux-gnueabihf-gcc -o test test.c
+$ rsync -rav test tc@<replace with IP of RPi>:test
+```
+SSH into the RPi with password "piCore" and run the program:
+```bash
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ sudo chmod +x test
+tc@box:~$ ./test
+Hello, world!
+```
+If the program works it will display "Hello, world!" and you're ready to compile the main software. If it doesn't work for you make sure you configured the cross compiler correctly.
+
+## Testing the sensehat
+
+Let's test a simple program that uses the sensehat to retrieve the temperature, humidity and athmospheric air pressure to make sure things are working and also that we can use the RGB led matrix.
 
 ## Setting up Linux server
