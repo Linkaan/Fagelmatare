@@ -928,7 +928,7 @@ $ ct-ng build
 In the same way we tested our master cross compiler we want to do a quick sanity check. We export CCPREFIX to be able to compile and add our prefix directory to the path:
 ```bash
 $ export PATH=$PATH:$HOME/slave_toolchain/cross/x-tools/arm-rpislave-linux-gnueabihf/bin
-$ export CCPREFIX="$HOME/slave_toolchain/cross/x-tools/arm-rpislave-linux-gnueabihf/bin/arm-rpislave-linux-gnueabihf-"
+$ export CCPREFIX="$HOME/slave_toolchain/cross/x-tools/arm-rpislave-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-"
 ```
 If everything is setup correctly you should be able to get the current version of the ARM compiler:
 ```bash
@@ -943,9 +943,9 @@ int main() {
     return 0;
 }
 ```
-Now we try building our "test" binary and copying it to the master RPi.
+Now we try building our "test" binary and copying it to the slave RPi.
 ```bash
-$ arm-rpislave-linux-gnueabihf-gcc -o test test.c
+$ $(CCPREFIX)gcc -o test test.c
 $ rsync -rav test tc@<replace with IP of RPi>:test
 ```
 SSH into the RPi with password "piCore" and run the program:
@@ -959,6 +959,27 @@ If the program works it will display "Hello, world!" and you're ready to compile
 
 ## Testing the sensehat
 
-Let's test a simple program that uses the sensehat to retrieve the temperature, humidity and athmospheric air pressure to make sure things are working and also that we can use the RGB led matrix.
+Let's build a simple program that uses the sensehat to retrieve the temperature, humidity and athmospheric air pressure to make sure things are working. The `sensehat_sensor_test.c` is found under the tests/ directory in this repository:
+```bash
+$ cd tests/
+$ $(CCPREFIX)gcc -o sensehat_sensor_test sensehat_sensor_test.c
+$ rsync -ravh sensehat_sensor_test tc@<replace with IP of RPi>:sensehat_sensor_test
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ sudo chmod +x sensehat_sensor_test
+tc@box:~$ ./sensehat_sensor_test
+```
+You should get a report of the temperature, humidity and athmospheric pressure. Sometimes you need to run the program again to get an accurate athmospheric pressure.
+
+Let's also test the led matrix. Back on our main computer we compile the program which is also in the tests/ directory:
+```bash
+$ $(CCPREFIX)gcc -o sensehat_rgbmatrix_test sensehat_rgbmatrix_test.c
+$ rsync -ravh sensehat_rgbmatrix_test tc@<replace with IP of RPi>:sensehat_rgbmatrix_test
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ sudo chmod +x sensehat_rgbmatrix_test
+tc@box:~$ ./sensehat_rgbmatrix_test
+```
+If the sensehat framebuffer is configured correctly you should see a quicksort of the leds forming a rainbow. The rgb matrix is not actually used because it might scare the birds away. If everything has worked thus far it is time to compile the software for our slave RPi.
+
+## Compiling the main software for slave
 
 ## Setting up Linux server
