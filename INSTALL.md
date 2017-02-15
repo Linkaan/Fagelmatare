@@ -189,13 +189,13 @@ Since the architecture for RPi generation 1 and generation 2 are different we ne
     - Set "Target OS" to "linux"
 - Binary utilities
     - Set "Binary format" to "ELF"
-    - Set "binutils version" to "2.26"
+    - Set "binutils version" to "2.27"
 - C-library
     - Set "C library" to "glibc"
-    - Set "glibc version" to "2.24"
+    - Set "glibc version" to "2.25"
 - C compiler
     - Check "Show Linaro versions"
-    - Set "gcc version" to "linaro-5.2-2015.11-2"
+    - Set "gcc version" to "linaro-6.2-2016.11"
     - Set "gcc extra config" to "--with-float=hard"
     - Check "Link libstdc++ statically into the gcc binary"
     - Check "C++" under "Additional supported languages"
@@ -221,13 +221,13 @@ Since the architecture for RPi generation 1 and generation 2 are different we ne
     - Set "Target OS" to "linux"
 - Binary utilities
     - Set "Binary format" to "ELF"
-    - Set "binutils version" to "2.26"
+    - Set "binutils version" to "2.27"
 - C-library
     - Set "C library" to "glibc"
-    - Set "glibc version" to "2.24"
+    - Set "glibc version" to "2.25"
 - C compiler
     - Check "Show Linaro versions"
-    - Set "gcc version" to "linaro-5.2-2015.11-2"
+    - Set "gcc version" to "linaro-6.2-2016.11"
     - Set "gcc extra config" to "--with-float=hard"
     - Check "Link libstdc++ statically into the gcc binary"
     - Check "C++" under "Additional supported languages"
@@ -910,8 +910,10 @@ $ ct-ng menuconfig
 
 Now see the [Building and configuring crosstool-ng for master](#building-and-configuring-crosstool-ng-for-master) section for the configuration to use. For the raspberry pi zero it will be the generation 1 configuration.
 
-In order to distinquise between the master and slave cross compiler we want to change one setting:
+In order to distinguish between the master and slave cross compiler we want to change these settings:
 
+- Paths and misc options
+    - Set "Prefix directory" to "${HOME}/slave_toolchain/cross/x-tools/${CT_TARGET}"
 - Toolchain options
     - Set "Tuple's vendor string" to "rpislave"
 
@@ -925,8 +927,8 @@ $ ct-ng build
 
 In the same way we tested our master cross compiler we want to do a quick sanity check. We export CCPREFIX to be able to compile and add our prefix directory to the path:
 ```bash
-$ export PATH=$PATH:$HOME/slave_toolchain/cross/x-tools/arm-rpi-linux-gnueabihf/bin
-$ export CCPREFIX="$HOME/slave_toolchain/cross/x-tools/arm-rpi-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-"
+$ export PATH=$PATH:$HOME/slave_toolchain/cross/x-tools/arm-rpislave-linux-gnueabihf/bin
+$ export CCPREFIX="$HOME/slave_toolchain/cross/x-tools/arm-rpislave-linux-gnueabihf/bin/arm-rpislave-linux-gnueabihf-"
 ```
 If everything is setup correctly you should be able to get the current version of the ARM compiler:
 ```bash
