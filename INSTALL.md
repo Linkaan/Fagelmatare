@@ -754,8 +754,53 @@ Now try playing the video(s) in ~/test-videos/ with VLC or similar. If you have 
 
 ### Setting up network over usb
 
+This step is only viable if you use the RPi zero. Otherwise you must use a crossover ethernet cable for communication between master and slave which isn't covered in this guide.
+
 In order to communicate with the slave RPi we need to setup a network over usb. This is called tethering, we need to share internet access and setup IP forwarding in the kernel.
 
+First of all we need to install iptables to create a bridge between wlan0 and usb0:
+```bash
+tc@box:~$ tce-load -wi iptables
+```
+Next we need to configure iptables using the following script (put in `/home/tc/iptablesconf.sh`):
+```bash
+#!/bin/sh
+IPT=/usr/local/sbin/iptables
+LOCAL_IFACE=usb0
+INET_IFACE=wlan0
+INET_ADDRESS=<replace with IP of master RPi>
+
+# Flush the tables
+$IPT -F INPUT
+$IPT -F OUTPUT
+$IPT -F FORWARD
+
+$IPT -t nat -P PREROUTING ACCEPT
+$IPT -t nat -P POSTROUTING ACCEPT
+$IPT -t nat -P OUTPUT ACCEPT
+
+# Allow forwarding packets:
+$IPT -A FORWARD -p ALL -i $LOCAL_IFACE -j ACCEPT
+$IPT -A FORWARD -i $INET_IFACE -m state --state ESTABLISHED,RELATED -j ACCEPT
+
+# Packet masquerading
+$IPT -t nat -A POSTROUTING -o $INET_IFACE -j SNAT --to-source $INET_ADDRESS
+```
+Don't forget to change the `INET_ADDRESS` variable to match the ip of the master RPi.
+
+Next we run the script and save the configuration file to `/etc/iptables.conf` with iptables-save:
+```bash
+tc@box:~$ chmod +x iptablesconf.sh
+tc@box:~$ sudo ./iptablesconf.sh
+tc@box:~$ sudo iptables-save | sudo tee /opt/iptables.conf
+```
+Next we enable ipv4 forwarding in the kernel and also load our iptables configuration and usb0 interface on boot by adding the following to `/opt/bootlocal.sh`:
+```bash
+/sbin/ifconfig usb0 10.0.1.1 up
+echo 1 > /proc/sys/net/ipv4/ip_forward
+/usr/local/sbin/iptables-restore < /opt/iptables.conf
+```
+Now make the changes persistent with `filetool.sh -b` and reboot.
 ## Configuring our slave
 
 Make sure you have installed and configured tiny core linux on the slave RPi as described in the [Installing tiny core linux](#installing-tiny-core-linux) section.
@@ -824,12 +869,15 @@ We also want to make sure the `dwc2` overlay is enabled on boot, add the followi
 ```
 dtoverlay=dwc2,rpi-sense
 ```
-Now to load the dwc2 and g_ether module on boot let's add the following content to `/opt/bootlocal.sh`:
+Now to load the dwc2 and g_ether module and setup our usb0 interface on boot let's add the following content to `/opt/bootlocal.sh`:
 ```bash
 /sbin/modprobe dwc2
 /bin/sleep 5 # workaround for a problem not detecting usb devices
 /sbin/modprobe g_ether
-/sbin/ifconfig usb0 10.0.1.2 up
+/sbin/ifconfig usb0 10.0.1.2 netmask 255.255.255.0 up
+/sbin/route add default gw 10.0.1.1
+echo nameserver 8.8.8.8 >> /etc/resolv.conf
+echo nameserver 8.8.4.4 >> /etc/resolv.conf
 ```
 
 Before rebooting let's also add the kernel modules for the sense hat.
