@@ -7,3 +7,6 @@
 [submodule "modules/serializer"]
 	path = modules/serializer
 	url = https://github.com/Linkaan/Serializer
+[submodule "modules/events"]
+	path = modules/events
+	url = git@github.com:Linkaan/Events.git
