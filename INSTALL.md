@@ -294,6 +294,7 @@ $ CC=${CCPREFIX}gcc CXX=${CCPREFIX}g++ ./configure --host=arm-rpi-linux-gnueabi 
 $ make
 $ make install
 ```
+
 ### Copying dependencies
 
 We need to copy all the required dependencies from our RPi so that we can build ffmpeg. Let's put this content in the `~/master_toolchain/pi/usr` directory that we must create along with subdirectories `include` and `lib`:
@@ -396,7 +397,7 @@ $ strip picam
 
 ### Packaging picam into a tcz package
 
-We must add our libraries into a common package that can be installed on our RPi. A tcz package is a in reality a squashfs, so we can simply create a directory that corresponds to the path that we want the files to be put into on our real filesystem when the raspberry pi reboots. Let's put in all the videocore libraries:
+We must add our libraries into a common package that can be installed on our RPi. A tcz package is in reality a squashfs, so we can simply create a directory that corresponds to the path that we want the files to be put into on our real filesystem when the raspberry pi reboots. Let's put in all the videocore libraries:
 ```bash
 $ export PILIB=$HOME/master_toolchain/pi/picam/squashfs/usr/local/lib
 $ mkdir -p $PILIB
@@ -492,7 +493,7 @@ SSH back into your RPi and try running picam to see if it works. If everything w
 
 ### Building wiringPi
 
-In our main main software we require to use `wiringPi` so let's download the source code:
+The main main software requires to use `wiringPi` so let's download the source code:
 ```bash
 $ cd ~/master_toolchain/pi
 $ git clone git://git.drogon.net/wiringPi
@@ -614,7 +615,37 @@ tc@box:~$ mv wiringPi.tcz /mnt/mmcblk0p2/tce/optional/
 tc@box:~$ echo wiringPi.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 ```
 
-### Compiling main software
+### Building libevent
+
+Let's build libevent that is used by the main software. Clone the repository and then configure it to be built for our RPi's architecture:
+```bash
+$ cd ~/master_toolchain/pi
+$ git clone https://github.com/libevent/libevent
+$ export LIBEVENT=$HOME/master_toolchain/pi/libevent/squashfs/usr/local
+$ mkdir -p $LIBEVENT
+$ ./autogen.sh
+$ CC=${CCPREFIX}gcc CXX=${CCPREFIX}g++ CFLAGS="-I$PIUSR/include -L$PIUSR/lib" ./configure --host=arm-rpi-linux-gnueabi --prefix=$LIBEVENT
+$ make
+$ make install
+```
+Copy the binaries and header files to `$PIUSR` and package libevent into a tcz package:
+```bash
+$ cd $LIBEVENT
+$ mv ./include/* $PIUSR/include
+$ cp ./lib/* $PIUSR/lib
+$ rm -r bin/ include/
+$ cd ~/master_toolchain/pi/libevent
+$ mksquashfs squashfs/ libevent.tcz
+```
+Now let's install it on our RPi:
+```bash
+$ scp libevent.tcz tc@<replace with IP of RPi>:libevent.tcz
+$ ssh tc@<replace with IP of RPi>
+tc@box:~$ mv libevent.tcz /mnt/mmcblk0p2/tce/optional/
+tc@box:~$ echo libevent.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
+```
+
+### Compiling main software for master
 
 If you have not yet cloned this repository, clone it to `~/Fagelmatare`:
 ```bash
