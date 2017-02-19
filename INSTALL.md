@@ -29,6 +29,7 @@ Plug in an ethernet cable to your master RPi, insert the sd card and boot it up.
 $ nmap -v -sn 192.168.1.0/24
 ```
 An alternative is to use Fing on your mobile phone which can be used to grab the IP of the RPi.
+
 Now run this command on your machine to remotely connect to your RPi:
 ```bash
 $ ssh tc@<replace with IP of RPi>
@@ -45,7 +46,7 @@ Once you're logged in we need to partition our SD card to add persistent storage
 2. Delete second partition with `d` then recreate it with `n` command.
    Use the same starting sector as deleted had and provide end sectore or size greater than deleted had having enough free space for Mounted Mode. When finished, exit fdisk with 'w' command. Now the partition size increased but file system size is not yet changed.
 3. Reboot piCore. It is necessary to make Kernel aware of changes.
-4. After reboot expand file system to the new partition boundaries with typing  the following command as root:
+4. After reboot ssh back into fgmaster and expand file system to the new partition boundaries with typing  the following command as root:
     ```bash
     tc@box:~$ sudo resize2fs /dev/mmcblk0p2
     ```
@@ -69,11 +70,52 @@ $ wget tinycorelinux.net/8.x/armv6/tcz/net-usb-4.4.39-piCore+.tcz
 $ cd ..
 $ echo net-usb-4.4.39-piCore+.tcz >> onboot.lst
 ```
+
 ## Configuring our master
 
-SSH into your master RPi (procedure to retrieve IP of RPi is described above):
+We are going to connect to our master and slave several times so it is best to configure a shorthand for it by editing the `~/.ssh/config` file and appending this as the master entry:
 ```bash
-$ ssh tc@<replace with IP of RPi>
+Host fgmaster
+  HostName <replace with IP of RPi>
+  User tc
+```
+SSH into your master RPi to see if it works:
+```bash
+$ ssh fgmaster
+tc@box:~$ exit
+```
+
+It is annoying to have to type "piCore" as the password everytime so let's authorize our computer to allow to connect without a password and then also change it to a more secure one.
+
+If you haven't got a ssh key setup to use (usually it is the `~/.ssh/id_rsa` file) then we have to generate one (if you have one you can jump directly to [Adding our ssh key to authorized_keys](adding-our-ssh-key-to-authorized_keys) but make sure you have the ssh-agent setup properly if you are using a passphrase for the ssh key):
+```bash
+$ ssh-keygen -t rsa -b 4096 -C "your_email@example.com"
+```
+You will be asked where to save the ssh key, save it as `~/.ssh/fgid_rsa`. Set the passphrase to something secure that you will remember. Now you should have a rsa key that can be used to authorize to connect without a password to the master. Let's also start ssh-agent in the background which manages our ssh key and remembers our passphrase so that we don't have to type the passphrase all the time:
+```bash
+$ eval "$(ssh-agent -s)"
+$ ssh-add ~/.ssh/fgid_rsa
+```
+### Adding our ssh key to authorized_keys
+
+Now copy the ~/.ssh/fgid_rsa.pub or your the corresponding public key that you might already have had before and ssh into master and paste it into `~/.ssh/authorized_keys`:
+```bash
+$ ssh fgmaster
+tc@box:~$ mkdir ~/.ssh
+tc@box:~$ touch ~/.ssh/authorized_keys
+tc@box:~$ vi ~/.ssh/authorized_keys
+```
+
+Basic usage of `vi` if you're not used to it: press i to enter edit mode, then add the content and press esc to go back to command mode and type `:wq` to write the changes and exit. Same procedure when you use `vi` hereafter.
+
+Paste in your public key with CTRL+SHIFT+V when you are in edit mode (insert mode). Now close the ssh connection and try connecting again to make sure things are working:
+```bash
+tc@box:~$ exit
+$ ssh fgmaster
+```
+Now if you can connect without the password change it to something secure instead of having the default `piCore` password:
+```bash
+tc@box:~$ passwd
 ```
 
 ### Setting timezone
@@ -94,7 +136,6 @@ fixup_file=fixup_x.dat
 # optionally (to not scare birds):
 disable_camera_led=1
 ```
-Basic usage of `vi` if you're not used to it: press i to enter edit mode, then add the content and press esc to go back to command mode and type `:wq` to write the changes and exit. Same procedure when you use `vi` hereafter.
 
 We also need to allow all users to access /dev/vchiq to use the camera. So we need to chmod of it everytime we boot by adding it to /opt/bootlocal.sh
 ```bash
@@ -261,11 +302,11 @@ int main() {
 Now we try building our "test" binary and copying it to the master RPi.
 ```bash
 $ arm-rpi-linux-gnueabihf-gcc -o test test.c
-$ rsync -rav test tc@<replace with IP of RPi>:test
+$ rsync -rav test fgmaster:test
 ```
 SSH into the RPi with password "piCore" and run the program:
 ```bash
-$ ssh tc@<replace with IP of RPi>
+$ ssh fgmaster
 tc@box:~$ sudo chmod +x test
 tc@box:~$ ./test
 Hello, world!
@@ -306,9 +347,9 @@ $ mkdir include lib
 ```
 Now we can copy all the RPi libraries that are required to build our main software, ffmpeg and picam. We use rsync for this (password is `piCore`):
 ```bash
-$ rsync -ravh -L tc@<replace with IP of RPi>:/usr/local/include/ $PIUSR/include/
-$ rsync -ravh -L tc@<replace with IP of RPi>:/usr/local/lib/ $PIUSR/lib/
-$ rsync -ravh -L tc@<replace with IP of RPi>:/usr/lib/ $PIUSR/lib/
+$ rsync -ravh -L fgmaster:/usr/local/include/ $PIUSR/include/
+$ rsync -ravh -L fgmaster:/usr/local/lib/ $PIUSR/lib/
+$ rsync -ravh -L fgmaster:/usr/lib/ $PIUSR/lib/
 ```
 
 ### Building ffmpeg
@@ -433,11 +474,11 @@ $ mksquashfs squashfs/ picam.tcz
 
 Before we install the picam package we will test that it works. Let's copy it over to our RPi using rsync:
 ```bash
-$ rsync -ravh $HOME/master_toolchain/pi/picam/picam.tcz tc@<replace with IP of RPi>:picam.tcz
+$ rsync -ravh $HOME/master_toolchain/pi/picam/picam.tcz fgmaster:picam.tcz
 ```
 Now SSH into the RPi and we will load the tcz package:
 ```bash
-$ ssh tc@<replace with IP of RPi>
+$ ssh tc@fgmaster
 tc@box:~$ tce-load -i picam.tcz
 ```
 Now we will try to run picam:
@@ -470,7 +511,7 @@ tc@box:~$ exit
 ```
 Now back on your main Linux box you can copy the video using rsync:
 ```bash
-$ rsync -ravh tc@<replace with IP of RPi>:rec/archive/*.ts ~/videos/
+$ rsync -ravh fgmaster:rec/archive/*.ts ~/videos/
 ```
 Goto the `~/videos/` directory on your computer and you should be able to see a video file there. Open it with `vlc` or any other video player that supports playing `ts` files. If the video and audio seems good then we can move on to installing picam on our system permanently.
 
@@ -478,7 +519,7 @@ Goto the `~/videos/` directory on your computer and you should be able to see a 
 
 SSH into the RPi and copy the `picam.tcz` package to `/mnt/mmcblk0p2/tce/optional`:
 ```bash
-$ ssh tc@<replace with IP of RPi>
+$ ssh fgmaster
 tc@box:~$ mv picam.tcz /mnt/mmcblk0p2/tce/optional/
 ```
 Now to load `picam.tcz` on boot we need to append it to the `onboot.lst` file:
@@ -609,8 +650,8 @@ $ mksquashfs squashfs/ wiringPi.tcz
 ```
 Now let's install it on our RPi:
 ```bash
-$ rsync -ravh wiringPi.tcz tc@<replace with IP of RPi>:wiringPi.tcz
-$ ssh tc@<replace with IP of RPi>
+$ scp wiringPi.tcz fgmaster:wiringPi.tcz
+$ ssh fgmaster
 tc@box:~$ mv wiringPi.tcz /mnt/mmcblk0p2/tce/optional/
 tc@box:~$ echo wiringPi.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 ```
@@ -639,8 +680,8 @@ $ mksquashfs squashfs/ libevent.tcz
 ```
 Now let's install it on our RPi:
 ```bash
-$ scp libevent.tcz tc@<replace with IP of RPi>:libevent.tcz
-$ ssh tc@<replace with IP of RPi>
+$ scp libevent.tcz fgmaster:libevent.tcz
+$ ssh fgmaster
 tc@box:~$ mv libevent.tcz /mnt/mmcblk0p2/tce/optional/
 tc@box:~$ echo libevent.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 ```
@@ -663,7 +704,7 @@ Now we have setup the essentials to test our SW but first let's setup networking
 
 In order to get wifi working we need to install some packages and the firmware for our adapter. This is specific to different wifi adapters but <http://wiki.tinycorelinux.net/wiki:list_of_supported_wifi_devices> contains a semi-complete list for the different wireless NIC chips. For the TP-link WN722 we need to install the firmware for the `Atheros AR9271`, `wifi.tcz` and the `wireless-x.x.xx-piCore-vx+.tcz` package. You can search for wireless in the tiny core application browser:
 ```bash
-$ ssh tc@<replace with IP of RPi>
+$ ssh fgmaster
 tc@box:~$ tce-load -wi wifi.tcz
 tc@box:~$ tce-ab
 1. tce-ab - Tiny Core Extension: Application Browser
@@ -733,7 +774,7 @@ Now plug out the ethernet cable so we can test the wifi connection. To keep the 
 tc@box:~$ filetool.sh -b
 tc@box:~$ sudo reboot
 ```
-After the RPi has booted up, try to ping the new IP address and make sure the connection works.
+After the RPi has booted up, try to ping the new IP address and make sure the connection works. If it works then edit the `~/.ssh/config` file to use the new IP for the master RPi by changing `HostName`.
 
 ### Sneak-peak of core functionality (optional)
 
@@ -742,7 +783,7 @@ This step is optional but is recommended to make sure everything thus far is set
 Sync the core module to the RPi:
 ```bash
 $ cd ~/Fagelmatare/modules/core
-$ rsync -ravh fagelmatare-core tc@<replace with IP of RPi>:fagelmatare-core
+$ rsync -ravh fagelmatare-core fgmaster:fagelmatare-core
 ```
 SSH into the RPi and let's setup a directory used by picam for storage:
 ```bash
@@ -779,7 +820,7 @@ If you look at `~/picam/picam.log` file again you should see that picam recorded
 
 Back at our main machine let's try syncing the recording(s):
 ```bash
-$ rsync -ravh tc@<replace with IP of RPi>:picam/archive/* ~/test-videos/
+$ rsync -ravh fgmaster:picam/archive/* ~/test-videos/
 ```
 Now try playing the video(s) in ~/test-videos/ with VLC or similar. If you have setup the livestreaming part also check so that works.
 
@@ -832,27 +873,54 @@ echo 1 > /proc/sys/net/ipv4/ip_forward
 /usr/local/sbin/iptables-restore < /opt/iptables.conf
 ```
 Now make the changes persistent with `filetool.sh -b` and reboot.
+
 ## Configuring our slave
 
 Make sure you have installed and configured tiny core linux on the slave RPi as described in the [Installing tiny core linux](#installing-tiny-core-linux) section.
 
-Again for the following procedures if you are using a RPi zero as the slave you must have a USB ethernet adapter, however it is much easier to just configure the slave on the master RPi so that you can use ethernet. However, after setting up network over usb you can switch to the RPi zero.
+Again for the following procedures if you are using a RPi zero as the slave you must have a USB ethernet adapter or a TTL Console Debug Cable, however it is much easier to just configure the slave on the master RPi so that you can use ethernet. However, after setting up network over usb you can switch to the RPi zero.
 
 ### Setting up network over usb
 
 This step is only viable if you use the RPi zero. Otherwise you must use a crossover ethernet cable to connect to the master which isn't covered in this guide.
 
-SSH into the slave RPi and mount the boot directory:
+Find the IP of your RPi. How to do this is described in the [Preparing the SD-card](preparing-the-sd-card) section.
+
+First of all to make stuff easier let's setup in a similar way as we did with the master a ssh config entry called fgslave so we don't have to retype the ip of our rpi all the time by editing the `~/.ssh/config` file and appending this as the slave entry:
 ```bash
-$ ssh tc@<replace with IP of RPi>
-tc@box:~$ sudo mount -t vfat /dev/mmcblk0p1 /mnt/mmcblk0p1
-tc@box:~$ vi config.txt
+Host fgslave
+  HostName <replace with IP of RPi>
+  User tc
 ```
-We need to enable the `dwc2` overlay in order to setup the RPi as a ethernet gadget. So add this under the `[ALL]` section:
+SSH into the slave RPi to see if it works:
+```bash
+$ ssh fgslave
+tc@box:~$ exit
 ```
-dtoverlay=dwc2
+
+### Adding our ssh key to authorized_keys
+
+Since we already have a working ssh key setup when we configured the master we can just use that one aswell for the slave.
+
+Copy the same public key as you did for master and ssh into slave and paste it into `~/.ssh/authorized_keys`:
+```bash
+$ ssh fgslave
+tc@box:~$ mkdir ~/.ssh
+tc@box:~$ touch ~/.ssh/authorized_keys
+tc@box:~$ vi ~/.ssh/authorized_keys
 ```
-Back on our main computer let's copy all the required usb modules that we need.
+
+Paste in your public key with CTRL+SHIFT+V when you are in edit mode (insert mode). Now close the ssh connection and try connecting again to make sure things are working:
+```bash
+tc@box:~$ exit
+$ ssh fgslave
+```
+Now if you can connect without the password change it to something secure instead of having the default `piCore` password:
+```bash
+tc@box:~$ passwd
+```
+
+Now we can go ahead and configure network over usb. Back on our main computer let's copy all the required usb modules that we need.
 
 Start by downloading the kernel modules and unpack:
 ```bash
@@ -883,8 +951,8 @@ $ mksquashfs usb_modules/ usb_modules.tcz
 ```
 Let's install the package by copying it to our slave RPi and adding it to onboot.lst:
 ```bash
-$ rsync -ravh usb_modules.tcz tc@<replace with IP of RPi>:/mnt/mmcblk0p2/tce/optional/usb_modules.tcz
-$ ssh tc@<replace with IP of RPi>
+$ scp usb_modules.tcz fgslave:/mnt/mmcblk0p2/tce/optional/usb_modules.tcz
+$ ssh fgslave
 tc@box:~$ echo usb_modules.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 ```
 Also make sure the modules.dep is correct by calling `depmod -a` and use filetool.sh to make changes persistent:
@@ -937,11 +1005,42 @@ $ mksquashfs sensehat_modules/ sensehat_modules.tcz
 ```
 Let's install the package by copying it to our slave RPi and adding it to onboot.lst:
 ```bash
-$ rsync -ravh sensehat_modules.tcz tc@<replace with IP of RPi>:/mnt/mmcblk0p2/tce/optional/sensehat_modules.tcz
-$ ssh tc@<replace with IP of RPi>
+$ scp sensehat_modules.tcz fgslave:/mnt/mmcblk0p2/tce/optional/sensehat_modules.tcz
+$ ssh fgslave
 tc@box:~$ echo sensehat_modules.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
 ```
-Now reboot the RPi and everything should be setup to configure crosstool-ng.
+Now halt the both the master and slave RPi and plug out the power to them and transfer the SD-card to your pi zero. It is time to test if network over usb is setup correctly. Connect a OTG cable (micro usb) between your master and slave. Make sure to connect to the micro usb port labeled as USB on the slave, otherwise the master will only power the slave and be able to talk to it. Plug in the power to the master and if everything is setup correctly the pi zero should display a rainbow
+pattern on the RGB led matrix but then after it has booted up it shouldn't display anything anymore. SSH into the master and try to ping the slave:
+```bash
+$ ssh fgmaster
+tc@box:~$ ping 10.0.1.2
+```
+If you can't ping the slave you should make sure the `g_ether` module loaded correctly. Type `lsmod` to see if it is loaded, if not you must go back to see if you missed anything.
+
+SSH into the slave from the master (with the password you configured before) and test that you have a working internet connection:
+```bash
+tc@box:~$ ssh tc@10.0.1.2
+tc@box:~$ ping google.com
+```
+If you can't ping google.com you should make sure that the default gateway is setup to go through 10.0.1.1 which is our master (type `route -n`).
+
+A trick we can do to directly access our slave from the main computer instead of having to manually open multiple ssh connections is to use a `ProxyCommand` in our `~/.ssh/config` file. Let's modify the slave entry in `~/.ssh/config`:
+```bash
+Host fgslave
+  HostName 10.0.1.2
+  User tc
+  ProxyCommand ssh -q fgmaster -W [%h]:22
+```
+The `ssh -W` command will forward packets via the master to the slave and thus creating a transparent ssh connection to the slave. The master RPi works as a proxy in this case. Try accessing the slave from the main computer and we can also take this opportunity to install rsync + openssl devel package:
+```bash
+$ ssh fgslave
+tc@box:~$ tce-load -wi rsync.tcz
+tc@box:~$ tce-load -wi openssl-dev.tcz
+tc@box:~$ exit
+```
+You should not be prompted for a password since the ssh keys are already configured.
+
+Now everything should be setup to configure crosstool-ng.
 
 ### Building and configuring crosstool-ng for slave
 
@@ -1025,25 +1124,25 @@ int main() {
 Now we try building our "test" binary and copying it to the slave RPi.
 ```bash
 $ $(CCPREFIX)gcc -o test test.c
-$ rsync -rav test tc@<replace with IP of RPi>:test
+$ scp test fgslave:test
 ```
-SSH into the RPi with password "piCore" and run the program:
+SSH into the RPi and run the program:
 ```bash
-$ ssh tc@<replace with IP of RPi>
+$ ssh fgslave
 tc@box:~$ sudo chmod +x test
 tc@box:~$ ./test
 Hello, world!
 ```
 If the program works it will display "Hello, world!" and you're ready to compile the main software. If it doesn't work for you make sure you configured the cross compiler correctly.
 
-## Testing the sensehat
+### Testing the sensehat
 
 Let's build a simple program that uses the sensehat to retrieve the temperature, humidity and athmospheric air pressure to make sure things are working. The `sensehat_sensor_test.c` is found under the tests/ directory in this repository:
 ```bash
 $ cd tests/
 $ $(CCPREFIX)gcc -o sensehat_sensor_test sensehat_sensor_test.c
-$ rsync -ravh sensehat_sensor_test tc@<replace with IP of RPi>:sensehat_sensor_test
-$ ssh tc@<replace with IP of RPi>
+$ scp sensehat_sensor_test fgslave:sensehat_sensor_test
+$ ssh fgslave
 tc@box:~$ sudo chmod +x sensehat_sensor_test
 tc@box:~$ ./sensehat_sensor_test
 ```
@@ -1052,12 +1151,58 @@ You should get a report of the temperature, humidity and athmospheric pressure. 
 Let's also test the led matrix. Back on our main computer we compile the program which is also in the tests/ directory:
 ```bash
 $ $(CCPREFIX)gcc -o sensehat_rgbmatrix_test sensehat_rgbmatrix_test.c
-$ rsync -ravh sensehat_rgbmatrix_test tc@<replace with IP of RPi>:sensehat_rgbmatrix_test
-$ ssh tc@<replace with IP of RPi>
+$ scp sensehat_rgbmatrix_test fgslave:sensehat_rgbmatrix_test
+$ ssh fgslave
 tc@box:~$ sudo chmod +x sensehat_rgbmatrix_test
 tc@box:~$ ./sensehat_rgbmatrix_test
 ```
-If the sensehat framebuffer is configured correctly you should see a quicksort of the leds forming a rainbow. The rgb matrix is not actually used because it might scare the birds away. If everything has worked thus far it is time to compile the software for our slave RPi.
+If the sensehat framebuffer is configured correctly you should see a quicksort of the leds forming a rainbow pattern. The rgb led matrix is not actually used because it might scare the birds away. If everything has worked thus far it is time to compile the software for our slave RPi. If something is not working make sure to go back and see if you missed any steps.
+
+### Copying dependencies
+
+As we did for the master we need to copy all the required dependencies from the RPi so that we can build libevent and the main software for the slave. Let's put this content in the `~/slave_toolchain/pi/usr` directory that we must create along with subdirectories `include` and `lib`:
+```bash
+$ export PIUSR=$HOME/slave_toolchain/pi/usr
+$ mkdir -p $PIUSR
+$ cd $PIUSR
+$ mkdir include lib
+```
+Now we can copy all the RPi libraries that are required to build the main software and libevent. We use rsync for this:
+```bash
+$ rsync -ravh -L fgslave:/usr/local/include/ $PIUSR/include/
+$ rsync -ravh -L fgslave:/usr/local/lib/ $PIUSR/lib/
+$ rsync -ravh -L fgslave:/usr/lib/ $PIUSR/lib/
+```
+
+### Building libevent
+
+Let's build libevent that is used by the main software. Clone the repository and then configure it to be built for our RPi's architecture:
+```bash
+$ cd ~/slave_toolchain/pi
+$ git clone https://github.com/libevent/libevent
+$ export LIBEVENT=$HOME/slave_toolchain/pi/libevent/squashfs/usr/local
+$ mkdir -p $LIBEVENT
+$ ./autogen.sh
+$ CC=${CCPREFIX}gcc CXX=${CCPREFIX}g++ CFLAGS="-I$PIUSR/include -L$PIUSR/lib" ./configure --host=arm-rpislave-linux-gnueabi --prefix=$LIBEVENT
+$ make
+$ make install
+```
+Copy the binaries and header files to `$PIUSR` and package libevent into a tcz package:
+```bash
+$ cd $LIBEVENT
+$ mv ./include/* $PIUSR/include
+$ cp ./lib/* $PIUSR/lib
+$ rm -r bin/ include/
+$ cd ~/master_toolchain/pi/libevent
+$ mksquashfs squashfs/ libevent.tcz
+```
+Now let's install it on our slave RPi:
+```bash
+$ scp libevent.tcz fgslave:libevent.tcz
+$ ssh fgslave
+tc@box:~$ mv libevent.tcz /mnt/mmcblk0p2/tce/optional/
+tc@box:~$ echo libevent.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
+```
 
 ## Compiling the main software for slave
 
