@@ -662,6 +662,7 @@ Let's build libevent that is used by the main software. Clone the repository and
 ```bash
 $ cd ~/master_toolchain/pi
 $ git clone https://github.com/libevent/libevent
+$ cd libevent
 $ export LIBEVENT=$HOME/master_toolchain/pi/libevent/squashfs/usr/local
 $ mkdir -p $LIBEVENT
 $ ./autogen.sh
@@ -1008,6 +1009,7 @@ Let's install the package by copying it to our slave RPi and adding it to onboot
 $ scp sensehat_modules.tcz fgslave:/mnt/mmcblk0p2/tce/optional/sensehat_modules.tcz
 $ ssh fgslave
 tc@box:~$ echo sensehat_modules.tcz >> /mnt/mmcblk0p2/tce/onboot.lst
+tc@box:~$ filetool.sh -b
 ```
 Now halt the both the master and slave RPi and plug out the power to them and transfer the SD-card to your pi zero. It is time to test if network over usb is setup correctly. Connect a OTG cable (micro usb) between your master and slave. Make sure to connect to the micro usb port labeled as USB on the slave, otherwise the master will only power the slave and be able to talk to it. Plug in the power to the master and if everything is setup correctly the pi zero should display a rainbow
 pattern on the RGB led matrix but then after it has booted up it shouldn't display anything anymore. SSH into the master and try to ping the slave:
@@ -1106,7 +1108,7 @@ $ ct-ng build
 In the same way we tested our master cross compiler we want to do a quick sanity check. We export CCPREFIX to be able to compile and add our prefix directory to the path:
 ```bash
 $ export PATH=$PATH:$HOME/slave_toolchain/cross/x-tools/arm-rpislave-linux-gnueabihf/bin
-$ export CCPREFIX="$HOME/slave_toolchain/cross/x-tools/arm-rpislave-linux-gnueabihf/bin/arm-rpi-linux-gnueabihf-"
+$ export CCPREFIX="$HOME/slave_toolchain/cross/x-tools/arm-rpislave-linux-gnueabihf/bin/arm-rpislave-linux-gnueabihf-"
 ```
 If everything is setup correctly you should be able to get the current version of the ARM compiler:
 ```bash
@@ -1180,6 +1182,7 @@ Let's build libevent that is used by the main software. Clone the repository and
 ```bash
 $ cd ~/slave_toolchain/pi
 $ git clone https://github.com/libevent/libevent
+$ cd libevent
 $ export LIBEVENT=$HOME/slave_toolchain/pi/libevent/squashfs/usr/local
 $ mkdir -p $LIBEVENT
 $ ./autogen.sh
