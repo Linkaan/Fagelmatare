@@ -10,3 +10,9 @@
 [submodule "modules/events"]
 	path = modules/events
 	url = git@github.com:Linkaan/Events.git
+[submodule "modules/avr"]
+	path = modules/avr
+	url = git@github.com:Linkaan/AVR.git
+[submodule "modules/avr-intermediate"]
+	path = modules/avr-intermediate
+	url = git@github.com:Linkaan/AVR-Intermediate.git
