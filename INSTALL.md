@@ -1196,7 +1196,7 @@ $ cd $LIBEVENT
 $ mv ./include/* $PIUSR/include
 $ cp ./lib/* $PIUSR/lib
 $ rm -r bin/ include/
-$ cd ~/master_toolchain/pi/libevent
+$ cd ~/slave_toolchain/pi/libevent
 $ mksquashfs squashfs/ libevent.tcz
 ```
 Now let's install it on our slave RPi:
