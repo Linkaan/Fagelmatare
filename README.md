@@ -1,6 +1,7 @@
 # Fagelmatare Embedded Application
 
 ==================================
+
 [![Fagelmatare GPLv3 License](https://img.shields.io/badge/licens-GPLv3_License-blue.svg)](LICENSE)  
 An embedded project created to learn Linux and C. Feeds and records birds using a PIR sensor. This is version 2 of this project, take a look at [legacy](https://github.com/Linkaan/Fagelmatare/tree/legacy) branch to see the original project.
 
